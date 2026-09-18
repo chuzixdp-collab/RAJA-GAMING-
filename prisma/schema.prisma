@@ -1,0 +1,580 @@
+// ============================================================
+// RAJA GAMING — Prisma schema
+// Database: PostgreSQL (Neon in production, embedded PG for dev)
+// NOTE: Money is stored as whole PKR rupees (Int) across the app.
+// ============================================================
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// Enums
+// ------------------------------------------------------------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum TournamentStatus {
+  DRAFT
+  UPCOMING
+  OPEN
+  FULL
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum RegistrationStatus {
+  PENDING_PAYMENT
+  PAYMENT_SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ListingStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SOLD
+  CANCELLED
+  SUSPENDED
+  DUPLICATE_REVIEW
+}
+
+enum PurchaseStatus {
+  REQUESTED
+  PAYMENT_PENDING
+  PAYMENT_SUBMITTED
+  PAYMENT_VERIFIED
+  OWNERSHIP_REVIEW
+  TRANSFER_PENDING
+  TRANSFER_VERIFIED
+  COMPLETED
+  REJECTED
+  CANCELLED
+  DISPUTED
+  REFUNDED
+}
+
+enum TxType {
+  CREDIT
+  DEBIT
+}
+
+enum TxReason {
+  TOURNAMENT_PRIZE
+  REFERRAL_REWARD
+  SELLER_PAYOUT
+  REFUND
+  WITHDRAWAL
+  ADMIN_ADJUSTMENT
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+enum RewardType {
+  DIAMONDS
+  CASH
+}
+
+enum NotificationType {
+  ORDER
+  PAYMENT
+  TOURNAMENT
+  MARKETPLACE
+  WALLET
+  REFERRAL
+  REVIEW
+  ADMIN
+  SYSTEM
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ContactStatus {
+  NEW
+  READ
+  REPLIED
+  CLOSED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum UploadKind {
+  PAYMENT_PROOF
+  LISTING_SCREENSHOT
+  ID_VERIFICATION
+  OTHER
+}
+
+// ------------------------------------------------------------
+// Users / auth / wallet
+// ------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role      @default(USER)
+  banned       Boolean   @default(false)
+  banReason    String?
+  tokenVersion Int       @default(0)
+  referralCode String    @unique @default(cuid())
+  referredById String?
+  referredBy   User?     @relation("ReferralTree", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals    User[]    @relation("ReferralTree")
+  referralsMade    Referral[] @relation("Referrer")
+  referralReceived Referral?  @relation("Referred")
+  wallet       Wallet?
+  orders       TopUpOrder[]
+  listings     Listing[]
+  purchases    Purchase[]      @relation("Purchases")
+  sales        Purchase[]      @relation("Sales")
+  registrations TournamentRegistration[]
+  notifications Notification[]
+  reviews      Review[]
+  redemptions  CouponRedemption[]
+  withdrawals  Withdrawal[]
+  passwordResets PasswordReset[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([role])
+}
+
+model Wallet {
+  id        String @id @default(cuid())
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String @unique
+  balance   Int    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id             String   @id @default(cuid())
+  wallet         Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  walletId       String
+  userId         String
+  type           TxType
+  amount         Int
+  balanceAfter   Int
+  reason         TxReason
+  description    String
+  reference      String?
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ------------------------------------------------------------
+// Diamond top-up
+// ------------------------------------------------------------
+
+model DiamondPackage {
+  id          String   @id @default(cuid())
+  title       String
+  diamonds    Int
+  price       Int
+  description String?
+  badge       String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  orders      TopUpOrder[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TopUpOrder {
+  id                  String      @id @default(cuid())
+  orderNumber         String      @unique
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  package             DiamondPackage @relation(fields: [packageId], references: [id])
+  packageId           String
+  packageTitle        String
+  diamonds            Int
+  amount              Int
+  couponCode          String?
+  discount            Int         @default(0)
+  totalAmount         Int
+  ffUid               String
+  ffServer            String?
+  paymentMethod       String      @default("EASYPAISA")
+  paymentTrxId        String?
+  paymentScreenshotId String?
+  paymentSubmittedAt  DateTime?
+  paymentVerifiedAt   DateTime?
+  status              OrderStatus @default(PENDING_PAYMENT)
+  userNote            String?
+  adminNotes          String?
+  reviewedById        String?
+  completedAt         DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+// ------------------------------------------------------------
+// Tournaments
+// ------------------------------------------------------------
+
+model Tournament {
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  rules         String
+  mode          String   @default("SQUAD")
+  map           String   @default("BERMUDA")
+  entryFee      Int      @default(0)
+  prizePool     String?
+  perKillReward Int      @default(0)
+  slots         Int
+  startsAt      DateTime
+  endsAt        DateTime?
+  status        TournamentStatus @default(DRAFT)
+  roomCode      String?
+  roomPassword  String?
+  roomReleased  Boolean  @default(false)
+  registrations TournamentRegistration[]
+  rewards       TournamentReward[]
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status, startsAt])
+}
+
+model TournamentRegistration {
+  id                  String   @id @default(cuid())
+  tournament          Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId        String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  inGameName          String
+  ffUid               String
+  status              RegistrationStatus @default(PENDING_PAYMENT)
+  paymentTrxId        String?
+  paymentScreenshotId String?
+  paymentSubmittedAt  DateTime?
+  paymentVerifiedAt   DateTime?
+  slotNumber          Int?
+  position            Int?
+  kills               Int?
+  rewardClaimed       Boolean  @default(false)
+  rewardClaimedAt     DateTime?
+  adminNotes          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId, status])
+}
+
+model TournamentReward {
+  id            String     @id @default(cuid())
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId  String
+  position      Int
+  rewardType    RewardType
+  diamondAmount Int?
+  cashAmount    Int?
+  description   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([tournamentId, position])
+}
+
+// ------------------------------------------------------------
+// Free Fire ID marketplace (admin-controlled)
+// ------------------------------------------------------------
+
+model Listing {
+  id                     String   @id @default(cuid())
+  seller                 User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId               String
+  title                  String
+  ffUid                  String
+  description            String
+  level                  Int?
+  price                  Int
+  verificationNote       String?
+  sensitiveDataEncrypted String?
+  status                 ListingStatus @default(PENDING)
+  adminNotes             String?
+  reviewedById           String?
+  reviewedAt             DateTime?
+  soldAt                 DateTime?
+  images                 ListingImage[]
+  purchases              Purchase[]
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([ffUid])
+}
+
+model ListingImage {
+  id        String  @id @default(cuid())
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId String
+  uploadId  String  @unique
+  sortOrder Int     @default(0)
+}
+
+model Purchase {
+  id                  String   @id @default(cuid())
+  listing             Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId           String
+  listingTitle        String
+  buyer               User     @relation("Purchases", fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerId             String
+  seller              User     @relation("Sales", fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId            String
+  price               Int
+  status              PurchaseStatus @default(REQUESTED)
+  paymentTrxId        String?
+  paymentScreenshotId String?
+  paymentSubmittedAt  DateTime?
+  paymentVerifiedAt   DateTime?
+  ownershipVerifiedAt DateTime?
+  transferVerifiedAt  DateTime?
+  completedAt         DateTime?
+  refundedAt          DateTime?
+  payoutAmount        Int?
+  payoutWalletTxId    String?  @unique
+  buyerNote           String?
+  disputeReason       String?
+  adminNotes          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([listingId])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([status, createdAt])
+}
+
+// ------------------------------------------------------------
+// Coupons / referrals
+// ------------------------------------------------------------
+
+model Coupon {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  type         CouponType
+  value        Int
+  minOrder     Int      @default(0)
+  maxDiscount  Int?
+  expiresAt    DateTime?
+  usageLimit   Int?
+  usedCount    Int      @default(0)
+  perUserLimit Int      @default(1)
+  active       Boolean  @default(true)
+  redemptions  CouponRedemption[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  couponId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  orderId   String?  @unique
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@unique([couponId, userId, orderId])
+}
+
+model Referral {
+  id           String    @id @default(cuid())
+  referrer     User      @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referrerId   String
+  referred     User      @relation("Referred", fields: [referredId], references: [id], onDelete: Cascade)
+  referredId   String    @unique
+  status       ReferralStatus @default(PENDING)
+  rewardAmount Int?
+  rewardedAt   DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+enum ReferralStatus {
+  PENDING
+  COMPLETED
+}
+
+// ------------------------------------------------------------
+// Notifications / reviews / contact / FAQ / settings / audit
+// ------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
+model Review {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  targetType    String
+  targetId      String
+  rating        Int
+  comment       String
+  status        ReviewStatus @default(PENDING)
+  moderationNote String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, targetType, targetId])
+  @@index([status, createdAt])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    ContactStatus @default(NEW)
+  adminNotes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model Faq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  category  String   @default("GENERAL")
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Withdrawal {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  amount        Int
+  accountName   String
+  accountNumber String
+  method        String   @default("EASYPAISA")
+  status        WithdrawalStatus @default(PENDING)
+  adminNotes    String?
+  walletTxId    String?  @unique
+  processedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorEmail String?
+  action     String
+  entity     String
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([entity, createdAt])
+  @@index([actorId, createdAt])
+}
+
+// ------------------------------------------------------------
+// Uploads (screenshots/images only — NO video)
+// Stored via the storage layer (Postgres bytea by default,
+// optional Netlify Blobs driver configured by env).
+// ------------------------------------------------------------
+
+model Upload {
+  id          String    @id @default(cuid())
+  kind        UploadKind
+  filename    String
+  storedName  String
+  mimeType    String
+  size        Int
+  data        Bytes?
+  storageKey  String?
+  isPublic    Boolean   @default(false)
+  uploadedById String?
+  createdAt   DateTime  @default(now())
+}
