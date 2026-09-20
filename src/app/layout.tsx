@@ -34,6 +34,9 @@ export const metadata: Metadata = {
     "EasyPaisa top up",
     "gaming community",
   ],
+  verification: {
+    google: "RG2j2zw2EAkXnyXCdnF6xCVLs4nmuLfo1VSk5dNbq50",
+  },
   applicationName: "RAJA GAMING",
   authors: [{ name: "RAJA GAMING" }],
   alternates: { canonical: "/" },
