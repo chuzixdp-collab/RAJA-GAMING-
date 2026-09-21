@@ -5,8 +5,10 @@ import { toast } from "sonner";
 import {
   Gavel,
   ImageOff,
+  KeyRound,
   Loader2,
   Lock,
+  Pencil,
   ShieldCheck,
   Trash2,
   Unlock,
@@ -17,6 +19,7 @@ import { formatRs, timeAgo } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,6 +67,30 @@ type ListingAction =
   | "DELETE";
 
 type ListingImageRow = { id: string; uploadId: string; sortOrder: number };
+
+type ListingCredentials = {
+  accountEmail: string | null;
+  accountPassword: string | null;
+  recoveryEmail: string | null;
+  recoveryPassword: string | null;
+  extra: string | null;
+};
+
+type CredentialsForm = {
+  accountEmail: string;
+  accountPassword: string;
+  recoveryEmail: string;
+  recoveryPassword: string;
+  extra: string;
+};
+
+const EMPTY_CREDENTIALS_FORM: CredentialsForm = {
+  accountEmail: "",
+  accountPassword: "",
+  recoveryEmail: "",
+  recoveryPassword: "",
+  extra: "",
+};
 
 type ListingRow = {
   id: string;
@@ -120,6 +147,15 @@ export function ListingsView() {
   const [deleting, setDeleting] = useState(false);
   // screenshot enlarge
   const [screenshot, setScreenshot] = useState<string | null>(null);
+  // credential vault (admin-only decrypted view)
+  const [credsTarget, setCredsTarget] = useState<ListingRow | null>(null);
+  const [creds, setCreds] = useState<ListingCredentials | null>(null);
+  const [credsBusy, setCredsBusy] = useState(false);
+  // credential editor (admin manual entry / edit)
+  const [editTarget, setEditTarget] = useState<ListingRow | null>(null);
+  const [editForm, setEditForm] = useState<CredentialsForm>(EMPTY_CREDENTIALS_FORM);
+  const [editPrefillBusy, setEditPrefillBusy] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -198,6 +234,75 @@ export function ListingsView() {
     }
   }
 
+  /** Fetch decrypted credentials for the admin vault dialog. */
+  async function openCredentials(listing: ListingRow) {
+    if (credsBusy) return;
+    setCredsTarget(listing);
+    setCreds(null);
+    setCredsBusy(true);
+    try {
+      const d = await apiFetch<{ credentials: ListingCredentials }>(
+        `/api/admin/marketplace/credentials?listingId=${listing.id}`
+      );
+      setCreds(d.credentials);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load credentials.");
+      setCredsTarget(null);
+    } finally {
+      setCredsBusy(false);
+    }
+  }
+
+  /** Open the manual entry / edit dialog, pre-filling existing credentials if stored. */
+  async function openCredentialsEditor(listing: ListingRow) {
+    if (editPrefillBusy) return;
+    setEditTarget(listing);
+    setEditForm(EMPTY_CREDENTIALS_FORM);
+    if (listing.sensitiveDataEncrypted === "yes") {
+      setEditPrefillBusy(true);
+      try {
+        const d = await apiFetch<{ credentials: ListingCredentials }>(
+          `/api/admin/marketplace/credentials?listingId=${listing.id}`
+        );
+        setEditForm({
+          accountEmail: d.credentials.accountEmail ?? "",
+          accountPassword: d.credentials.accountPassword ?? "",
+          recoveryEmail: d.credentials.recoveryEmail ?? "",
+          recoveryPassword: d.credentials.recoveryPassword ?? "",
+          extra: d.credentials.extra ?? "",
+        });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to load saved credentials.");
+        setEditTarget(null);
+      } finally {
+        setEditPrefillBusy(false);
+      }
+    }
+  }
+
+  /** Save (encrypt + store) the manually entered credentials. */
+  async function saveCredentials() {
+    if (!editTarget || editSaving) return;
+    if (!editForm.accountEmail.trim() && !editForm.accountPassword.trim()) {
+      toast.error("Account Gmail ya Password — kam az kam ek zaroori hai.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await apiFetch("/api/admin/marketplace/credentials", {
+        method: "POST",
+        json: { listingId: editTarget.id, ...editForm },
+      });
+      toast.success("ID credentials encrypted save ho gaye.");
+      setEditTarget(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save credentials.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -268,6 +373,8 @@ export function ListingsView() {
                 }
               }}
               onScreenshot={setScreenshot}
+              onViewCredentials={() => void openCredentials(listing)}
+              onEditCredentials={() => void openCredentialsEditor(listing)}
             />
           ))}
         </div>
@@ -363,7 +470,6 @@ export function ListingsView() {
             <DialogDescription>Ownership proof submitted by the seller.</DialogDescription>
           </DialogHeader>
           {screenshot && (
-             
             <img
               src={screenshot}
               alt="Listing screenshot enlarged"
@@ -372,6 +478,152 @@ export function ListingsView() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Admin credential vault (decrypted view) */}
+      <Dialog open={credsTarget !== null} onOpenChange={(o) => !o && setCredsTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <KeyRound className="h-4 w-4" aria-hidden /> ID credentials — admin vault
+            </DialogTitle>
+            <DialogDescription>
+              {credsTarget?.title} • FF UID {credsTarget?.ffUid}. Transfer ke ilawa kahin share na
+              karein. Har view audit log mein record hota hai.
+            </DialogDescription>
+          </DialogHeader>
+          {credsBusy ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+            </div>
+          ) : creds ? (
+            <div className="grid gap-2.5">
+              <CredentialField label="Account Gmail" value={creds.accountEmail} />
+              <CredentialField label="Account Password" value={creds.accountPassword} />
+              <CredentialField label="Recovery Gmail" value={creds.recoveryEmail} />
+              <CredentialField label="Recovery Password" value={creds.recoveryPassword} />
+              {creds.extra && (
+                <div className="rounded-md border border-border bg-muted/40 p-2 text-xs">
+                  <span className="font-medium">Extra:</span> {creds.extra}
+                </div>
+              )}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCredsTarget(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin credential manual entry / edit */}
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Pencil className="h-4 w-4" aria-hidden /> Enter / Edit ID credentials
+            </DialogTitle>
+            <DialogDescription>
+              {editTarget?.title} • FF UID {editTarget?.ffUid}. AES-256-GCM encrypted save hota
+              hai. Buyer ko ye tab dikhta hai jab aap Transactions mein &quot;Verify transfer&quot;
+              ya &quot;Complete&quot; kar dete hain.
+            </DialogDescription>
+          </DialogHeader>
+          {editPrefillBusy ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="cred-account-email">Account Gmail *</Label>
+                <Input
+                  id="cred-account-email"
+                  value={editForm.accountEmail}
+                  onChange={(e) => setEditForm((f) => ({ ...f, accountEmail: e.target.value }))}
+                  placeholder="example@gmail.com"
+                  maxLength={120}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="cred-account-password">Account Password *</Label>
+                <Input
+                  id="cred-account-password"
+                  value={editForm.accountPassword}
+                  onChange={(e) => setEditForm((f) => ({ ...f, accountPassword: e.target.value }))}
+                  placeholder="Current password of the FF account"
+                  maxLength={120}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="cred-recovery-email">Recovery Gmail (optional)</Label>
+                <Input
+                  id="cred-recovery-email"
+                  value={editForm.recoveryEmail}
+                  onChange={(e) => setEditForm((f) => ({ ...f, recoveryEmail: e.target.value }))}
+                  maxLength={120}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="cred-recovery-password">Recovery Password (optional)</Label>
+                <Input
+                  id="cred-recovery-password"
+                  value={editForm.recoveryPassword}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, recoveryPassword: e.target.value }))
+                  }
+                  maxLength={120}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="cred-extra">Extra info (optional)</Label>
+                <Textarea
+                  id="cred-extra"
+                  value={editForm.extra}
+                  onChange={(e) => setEditForm((f) => ({ ...f, extra: e.target.value }))}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="e.g. Facebook linked, level 60, 20k diamonds..."
+                />
+              </div>
+              <p className="rounded-md border border-amber-600/30 bg-amber-600/10 p-2 text-xs text-amber-500">
+                Tip: transfer se pehle account ka Gmail/Password khud change karein aur naya wala
+                yahan save karein — purana password seller ke paas kaam nahi karega.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={editSaving}>
+              Cancel
+            </Button>
+            <Button onClick={() => void saveCredentials()} disabled={editSaving || editPrefillBusy}>
+              {editSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}
+              Save credentials
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function CredentialField({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="truncate font-mono text-sm">{value ?? "—"}</p>
+      </div>
+      {value && <CopyButton value={value} label="Copy" />}
     </div>
   );
 }
@@ -381,11 +633,15 @@ function ListingCard({
   busy,
   onAction,
   onScreenshot,
+  onViewCredentials,
+  onEditCredentials,
 }: {
   listing: ListingRow;
   busy: boolean;
   onAction: (action: ListingAction) => void;
   onScreenshot: (src: string | null) => void;
+  onViewCredentials: () => void;
+  onEditCredentials: () => void;
 }) {
   const actions = STATUS_ACTIONS[listing.status] ?? [];
   const encrypted = listing.sensitiveDataEncrypted === "yes";
@@ -455,6 +711,19 @@ function ListingCard({
           )}
         </div>
 
+        <div className="mt-3 flex flex-wrap gap-2">
+          {encrypted && (
+            <Button size="sm" variant="outline" onClick={onViewCredentials}>
+              <KeyRound className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              View Gmail &amp; Pass
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={onEditCredentials}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            {encrypted ? "Edit Gmail & Pass" : "Enter Gmail & Pass"}
+          </Button>
+        </div>
+
         <div className="mt-3">
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Screenshots
@@ -473,7 +742,6 @@ function ListingCard({
                   aria-label="Open listing screenshot"
                   className="transition-opacity hover:opacity-80"
                 >
-                  { }
                   <img
                     src={`/api/uploads/${img.uploadId}`}
                     alt="Listing screenshot"
