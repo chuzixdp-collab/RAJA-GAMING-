@@ -3,7 +3,7 @@ import { ApiError, apiSuccess, getClientIp, readJson, withApi } from "@/lib/api"
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { encryptionAvailable, encryptJSON } from "@/lib/crypto";
-import { revealCredentials } from "../../../../../../lib/credentials";
+import { revealCredentials } from "@/lib/credentials";
 import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
