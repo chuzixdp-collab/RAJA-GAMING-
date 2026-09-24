@@ -2,7 +2,7 @@
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Loader2, Plus, ShieldCheck, Store } from "lucide-react";
+import { ChevronDown, KeyRound, Loader2, Plus, ShieldCheck, Store } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/client";
 import { formatDateTime, formatRs } from "@/lib/format";
@@ -46,6 +46,14 @@ type ListingMine = {
   images: ListingImageDTO[];
 };
 
+type ListingCredentials = {
+  accountEmail: string | null;
+  accountPassword: string | null;
+  recoveryEmail: string | null;
+  recoveryPassword: string | null;
+  extra: string | null;
+};
+
 type PurchaseMine = {
   id: string;
   listingId: string;
@@ -85,8 +93,8 @@ const PURCHASE_STATUS_TEXT: Record<string, string> = {
   PAYMENT_VERIFIED: "Payment verified — account ownership is being checked.",
   OWNERSHIP_REVIEW: "Admin is verifying account ownership.",
   TRANSFER_PENDING: "Account transfer in progress.",
-  TRANSFER_VERIFIED: "Transfer verified — completing soon.",
-  COMPLETED: "Trade completed — the account is yours.",
+  TRANSFER_VERIFIED: "Transfer verified — your ID credentials are unlocked below.",
+  COMPLETED: "Trade completed — the account is yours. Credentials are unlocked below.",
   REJECTED: "This request was rejected by admins.",
   CANCELLED: "This transaction was cancelled.",
   DISPUTED: "A dispute was opened — admins are reviewing.",
@@ -308,7 +316,29 @@ function PurchaseCard({ purchase: p, onChanged }: { purchase: PurchaseMine; onCh
   const [trxId, setTrxId] = useState("");
   const [screenshotId, setScreenshotId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [credsOpen, setCredsOpen] = useState(false);
+  const [creds, setCreds] = useState<ListingCredentials | null>(null);
+  const [credsBusy, setCredsBusy] = useState(false);
   const canPay = p.status === "REQUESTED" || p.status === "PAYMENT_PENDING";
+  // Credentials unlock once the team has verified the account transfer.
+  const credsUnlocked = p.status === "TRANSFER_VERIFIED" || p.status === "COMPLETED";
+
+  async function openCredentials() {
+    if (credsBusy) return;
+    setCredsOpen(true);
+    setCredsBusy(true);
+    try {
+      const d = await apiFetch<{ credentials: ListingCredentials }>(
+        `/api/purchases/${p.id}/credentials`
+      );
+      setCreds(d.credentials);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load credentials.");
+      setCredsOpen(false);
+    } finally {
+      setCredsBusy(false);
+    }
+  }
 
   async function submitPayment(e: FormEvent) {
     e.preventDefault();
@@ -387,6 +417,26 @@ function PurchaseCard({ purchase: p, onChanged }: { purchase: PurchaseMine; onCh
         </p>
       )}
 
+      {credsUnlocked && (
+        <div className="rounded-lg border border-primary/40 bg-primary/10 p-4">
+          <p className="font-display flex items-center gap-2 text-sm font-semibold text-primary">
+            <ShieldCheck className="h-4 w-4" aria-hidden /> ID delivered — Gmail &amp; password
+            unlocked
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            The team verified this transfer. Open the secure vault to view the account credentials.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            className="mt-3 font-display tracking-wide"
+            onClick={() => void openCredentials()}
+          >
+            <KeyRound className="mr-2 h-4 w-4" aria-hidden /> View Gmail &amp; Password
+          </Button>
+        </div>
+      )}
+
       {canPay && (
         <form onSubmit={submitPayment} className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
           <p className="font-display text-sm font-semibold">Submit EasyPaisa payment</p>
@@ -430,6 +480,58 @@ function PurchaseCard({ purchase: p, onChanged }: { purchase: PurchaseMine; onCh
           </div>
         </form>
       )}
+
+      <Dialog open={credsOpen} onOpenChange={setCredsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Secure credential vault</DialogTitle>
+            <DialogDescription>
+              {p.listingTitle} — delivered to you by the RAJA GAMING team.
+            </DialogDescription>
+          </DialogHeader>
+          {credsBusy ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden />
+            </div>
+          ) : creds ? (
+            <div className="space-y-3">
+              {([
+                ["Account Gmail", creds.accountEmail],
+                ["Account Password", creds.accountPassword],
+                ["Recovery Gmail", creds.recoveryEmail],
+                ["Recovery Password", creds.recoveryPassword],
+              ] as const)
+                .filter(([, value]) => value !== null)
+                .map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {label}
+                      </p>
+                      <p className="truncate font-mono text-sm text-foreground">{value}</p>
+                    </div>
+                    <CopyButton value={value} label={label} />
+                  </div>
+                ))}
+              {creds.extra && (
+                <p className="rounded-md border border-border bg-muted/40 p-3 text-xs whitespace-pre-wrap">
+                  <span className="font-medium">Extra note:</span> {creds.extra}
+                </p>
+              )}
+              <Alert className="border-amber-600/40 bg-amber-600/10">
+                <AlertTitle>Keep this ID safe</AlertTitle>
+                <AlertDescription>
+                  Change the account password immediately and never share these details. RAJA
+                  GAMING staff will never ask for them again.
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
