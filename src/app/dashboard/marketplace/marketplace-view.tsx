@@ -513,7 +513,7 @@ function PurchaseCard({ purchase: p, onChanged }: { purchase: PurchaseMine; onCh
                       </p>
                       <p className="truncate font-mono text-sm text-foreground">{value}</p>
                     </div>
-                    <CopyButton value={value} label={label} />
+                    <CopyButton value={value ?? ""} label={label} />
                   </div>
                 ))}
               {creds.extra && (
