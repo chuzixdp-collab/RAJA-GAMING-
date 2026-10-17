@@ -1,29 +1,21 @@
-import Image from "next/image";
-import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { Crown } from "lucide-react";
 
-export function Logo({
-  className,
-  compact = false,
-}: {
-  className?: string;
-  compact?: boolean;
-}) {
+export function Logo({ className = "" }: { className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
-      <Image
-        src="/images/logo.png"
-        alt="RAJA GAMING Logo"
-        width={40}
-        height={40}
-        className="h-9 w-auto shrink-0 object-contain"
-        priority
-      />
-      {!compact && (
-        <span className="font-display text-lg font-bold leading-none tracking-wide sm:text-xl">
-          <span className="text-gold-gradient">RAJA</span>{" "}
-          <span className="text-foreground">GAMING</span>
-        </span>
-      )}
-    </span>
+    <div className={`flex items-center gap-2.5 ${className}`}>
+      {/* Golden Glowing Badge */}
+      <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 p-0.5 shadow-md shadow-amber-500/20">
+        <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-slate-950">
+          <Crown className="h-4 w-4 text-amber-400" />
+        </div>
+      </div>
+      
+      {/* Brand Text */}
+      <span className="font-display text-lg font-bold tracking-wider">
+        <span className="text-gold-gradient">RAJA</span>{" "}
+        <span className="text-foreground">GAMING</span>
+      </span>
+    </div>
   );
 }
