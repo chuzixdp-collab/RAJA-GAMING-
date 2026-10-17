@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CrownMark } from "@/components/brand/logo";
+import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
