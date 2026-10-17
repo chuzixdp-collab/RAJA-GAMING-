@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CrownMark } from "@/components/brand/logo";
+import { Logo } from "@/components/brand/logo";
 
 export default function GlobalError({
   error,
