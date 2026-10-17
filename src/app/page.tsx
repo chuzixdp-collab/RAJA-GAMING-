@@ -1,4 +1,4 @@
-import Image from "next/image";
+
 import Link from "next/link";
 import {
   BadgeCheck,
@@ -119,15 +119,11 @@ export default async function HomePage() {
       <main className="min-h-[70vh]">
         {/* ---------------- HERO ---------------- */}
         <section className="relative overflow-hidden border-b border-border/60">
-          <Image
-            src="/images/hero-bg.jpg"
-            alt="RAJA GAMING battle arena backdrop"
-            fill
-            priority
-            sizes="100vw"
-            className="object-cover object-center"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/85 to-background" />
+          {/* Pure CSS Gaming Background */}
+          <div className="absolute inset-0 z-0 bg-slate-950" />
+          <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/25 via-slate-950/90 to-background" />
+          <div className="absolute inset-0 z-0 bg-[linear-gradient(to_right,#1f293720_1px,transparent_1px),linear-gradient(to_bottom,#1f293720_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)]" />
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-amber-500/15 rounded-full blur-[140px] pointer-events-none" />
           <div className="relative mx-auto flex max-w-7xl flex-col items-center px-4 py-20 text-center sm:px-6 sm:py-28 lg:py-32">
             <span className="badge-outline-gold inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em]">
               <Crown className="h-4 w-4" aria-hidden="true" />
