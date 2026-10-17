@@ -18,7 +18,7 @@ export default function GlobalError({
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
-      <CrownMark className="h-14 w-14" />
+      <Logo className="h-14 w-14" />
       <h1 className="mt-6 font-display text-3xl font-bold text-gold-gradient">Something went wrong</h1>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">
         An unexpected error occurred. Please try again — if the problem persists, contact support.
