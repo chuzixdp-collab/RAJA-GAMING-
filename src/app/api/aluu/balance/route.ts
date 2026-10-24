@@ -28,15 +28,19 @@ export async function GET() {
     const data = await response.json();
 
     if (!response.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ALUU balance check failed',
-          status: response.status,
-        },
-        { status: 502 }
-      );
-    }
+  return NextResponse.json(
+    {
+      success: false,
+      error: 'ALUU balance check failed',
+      status: response.status,
+      details: {
+        message: data?.message ?? 'No error message returned',
+        code: data?.code ?? null,
+      },
+    },
+    { status: 502 }
+  );
+}
 
     return NextResponse.json({
       success: true,
