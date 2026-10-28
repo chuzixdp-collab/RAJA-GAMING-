@@ -4,7 +4,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
+export async function GET() {
+  return NextResponse.json({
+    endpoint: "CryptoEze webhook",
+    status: "online",
+    note: "Webhook accepts POST requests only for payment events."
+  });
+}
 export async function POST(req: Request) {
   try {
     const secret = process.env.CRYPTOEZE_WEBHOOK_SECRET;
