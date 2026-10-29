@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { notify, notifyAdmins } from "@/lib/notifications";
+import { formatRs } from "@/lib/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -146,8 +148,77 @@ export async function POST(req: Request) {
       orderNumber: payload.data.order_id,
     });
 
-    // Intentionally do not approve orders or trigger diamond delivery here.
-    // Keep the existing manual admin verification flow unchanged.
+    // Act only on CryptoEze's documented PKR events (payment.paid /
+    // payment.failed / payment.refunded). A paid order moves to
+    // PAYMENT_SUBMITTED so it enters the EXISTING manual admin verification
+    // queue — identical to a manual EasyPaisa submission. Approval, wallet
+    // credit and diamond delivery stay manual admin actions.
+    if (payload.type === "payment.paid") {
+      try {
+        const order = await db.topUpOrder.findFirst({
+          where: { orderNumber: payload.data.order_id },
+          select: {
+            id: true,
+            userId: true,
+            orderNumber: true,
+            totalAmount: true,
+            status: true,
+            paymentMethod: true,
+          },
+        });
+
+        if (
+          order &&
+          order.paymentMethod === "CRYPTOEZE_QR" &&
+          order.status === "PENDING_PAYMENT"
+        ) {
+          const updated = await db.topUpOrder.updateMany({
+            where: {
+              id: order.id,
+              paymentMethod: "CRYPTOEZE_QR",
+              status: "PENDING_PAYMENT",
+            },
+            data: {
+              status: "PAYMENT_SUBMITTED",
+              paymentSubmittedAt: new Date(),
+            },
+          });
+
+          if (updated.count > 0) {
+            await notifyAdmins({
+              type: "PAYMENT",
+              title: "CryptoEze QR payment received",
+              body: `CryptoEze confirmed ${formatRs(order.totalAmount)} for order ${order.orderNumber}. Verify it to approve delivery.`,
+              link: "/admin/payments",
+            });
+            await notify({
+              userId: order.userId,
+              type: "PAYMENT",
+              title: "Payment received",
+              body: `We received your payment for order ${order.orderNumber}. Our team will verify it shortly.`,
+              link: "/dashboard/orders",
+            });
+          }
+        }
+      } catch (orderError) {
+        // The event is already recorded (dedup table) and accepted — never
+        // fail the webhook after persistence. Admin can still see the event
+        // in logs, and the payment can be verified manually.
+        console.error("CryptoEze payment.paid handling failed", orderError);
+      }
+    } else if (
+      payload.type === "payment.failed" ||
+      payload.type === "payment.refunded"
+    ) {
+      // No automatic state change for failed/refunded — the admin keeps full
+      // manual control over the order.
+      console.info("CryptoEze payment event (no order change)", {
+        eventType: payload.type,
+        orderNumber: payload.data.order_id,
+      });
+    }
+
+    // Never auto-approve orders or trigger diamond delivery here.
     return NextResponse.json({ received: true });
   } catch {
     return NextResponse.json(

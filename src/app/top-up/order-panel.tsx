@@ -8,6 +8,7 @@ import {
   Gem,
   Landmark,
   LogIn,
+  QrCode,
   ReceiptText,
   ShieldCheck,
   Sparkles,
@@ -50,6 +51,7 @@ type OrderDto = {
   diamonds: number;
   totalAmount: number;
   status: string;
+  paymentMethod: string;
 };
 
 const CARD_HOVER =
@@ -67,6 +69,13 @@ export function OrderPanel({
   const [selected, setSelected] = useState<PackageDto | null>(null);
   const [order, setOrder] = useState<OrderDto | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  // payment method: manual EasyPaisa (default) or CryptoEze QR checkout
+  const [paymentMethod, setPaymentMethod] = useState<
+    "EASYPAISA" | "CRYPTOEZE_QR"
+  >("EASYPAISA");
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [startingQr, setStartingQr] = useState(false);
 
   // order form
   const [ffUid, setFfUid] = useState("");
@@ -92,14 +101,47 @@ export function OrderPanel({
           ffServer,
           couponCode,
           userNote,
+          paymentMethod,
         },
       });
       setOrder(created);
-      toast.success(`Order ${created.orderNumber} created — complete your payment below.`);
+      if (created.paymentMethod === "CRYPTOEZE_QR") {
+        toast.success(
+          `Order ${created.orderNumber} created — starting your QR payment.`
+        );
+        void startQrPayment(created.id);
+      } else {
+        toast.success(
+          `Order ${created.orderNumber} created — complete your payment below.`
+        );
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not create your order.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function startQrPayment(orderId: string) {
+    setStartingQr(true);
+    try {
+      const res = await apiFetch<{ success: boolean; checkoutUrl: string }>(
+        "/api/payments/cryptoeze",
+        {
+          method: "POST",
+          json: { orderId },
+        }
+      );
+      setCheckoutUrl(res.checkoutUrl);
+      toast.success(
+        "CryptoEze QR checkout is ready — complete the payment to continue."
+      );
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Could not start the QR payment."
+      );
+    } finally {
+      setStartingQr(false);
     }
   }
 
@@ -125,6 +167,9 @@ export function OrderPanel({
     setSelected(null);
     setOrder(null);
     setSubmitted(false);
+    setPaymentMethod("EASYPAISA");
+    setCheckoutUrl(null);
+    setStartingQr(false);
     setFfUid("");
     setFfServer("");
     setCouponCode("");
@@ -292,6 +337,45 @@ export function OrderPanel({
               />
             </div>
             <div className="sm:col-span-2">
+              <Label>Payment Method</Label>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod === "EASYPAISA"}
+                  onClick={() => setPaymentMethod("EASYPAISA")}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+                    paymentMethod === "EASYPAISA"
+                      ? "border-primary/60 bg-primary/5"
+                      : "border-border hover:border-primary/30"
+                  )}
+                >
+                  <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                  <span>
+                    <span className="block text-sm font-semibold">{settings.paymentMethod || "EasyPaisa"} (manual)</span>
+                    <span className="block text-xs text-muted-foreground">Transfer manually, submit the transaction ID, team verifies.</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod === "CRYPTOEZE_QR"}
+                  onClick={() => setPaymentMethod("CRYPTOEZE_QR")}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+                    paymentMethod === "CRYPTOEZE_QR"
+                      ? "border-primary/60 bg-primary/5"
+                      : "border-border hover:border-primary/30"
+                  )}
+                >
+                  <QrCode className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                  <span>
+                    <span className="block text-sm font-semibold">CryptoEze QR</span>
+                    <span className="block text-xs text-muted-foreground">Scan and pay via the CryptoEze secure checkout. Verified manually after payment.</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div className="sm:col-span-2">
               <Button type="submit" className="w-full font-semibold sm:w-auto" disabled={busy || !isLoggedIn || !settings.paymentsEnabled}>
                 {busy ? "Creating order…" : `Create Order — ${formatRs(selected.price)}`}
               </Button>
@@ -300,8 +384,8 @@ export function OrderPanel({
         </section>
       )}
 
-      {/* Step 3: payment */}
-      {order && !submitted && (
+      {/* Step 3: payment — EasyPaisa manual flow (unchanged) */}
+      {order && !submitted && order.paymentMethod !== "CRYPTOEZE_QR" && (
         <section aria-labelledby="payment-section" className="card-raja p-5 sm:p-6">
           <h2 id="payment-section" className="font-display text-lg font-bold tracking-wide">
             3. Complete Your Payment
@@ -394,6 +478,72 @@ export function OrderPanel({
               Never share your EasyPaisa PIN with anyone. Our team will only ever ask for the transaction ID.
             </p>
           </form>
+        </section>
+      )}
+
+      {/* Step 3 (CryptoEze QR): hosted checkout redirect */}
+      {order && !submitted && order.paymentMethod === "CRYPTOEZE_QR" && (
+        <section aria-labelledby="payment-section-qr" className="card-raja p-5 sm:p-6">
+          <h2 id="payment-section-qr" className="font-display text-lg font-bold tracking-wide">
+            3. Pay with CryptoEze QR
+          </h2>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            {/* order summary */}
+            <div className="rounded-lg border border-border bg-card/60 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Order Number</p>
+                <CopyButton value={order.orderNumber} label="order number" />
+              </div>
+              <p className="mt-1 font-display text-xl font-bold tracking-wide text-primary">{order.orderNumber}</p>
+              <dl className="mt-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Package</dt>
+                  <dd className="font-medium">{order.packageTitle}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Diamonds</dt>
+                  <dd className="font-medium">{order.diamonds.toLocaleString("en-PK")}</dd>
+                </div>
+                <div className="flex justify-between border-t border-border/60 pt-2">
+                  <dt className="font-medium">Total to Pay</dt>
+                  <dd className="font-display text-lg font-bold text-primary">{formatRs(order.totalAmount)}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {/* QR checkout */}
+            <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
+              <p className="flex items-center gap-2 font-display text-sm font-bold uppercase tracking-wider text-primary">
+                <QrCode className="h-4 w-4" aria-hidden="true" /> CryptoEze Secure Checkout
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                Complete your payment on the CryptoEze checkout page by scanning the QR code with your banking or wallet app.
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Once CryptoEze confirms your payment, this order moves to <span className="font-medium text-foreground">Payment Submitted</span> and our
+                team verifies it manually — the same review process as a manual transfer.
+              </p>
+              <div className="mt-4 flex flex-col gap-2">
+                {checkoutUrl ? (
+                  <Button asChild className="w-full font-semibold">
+                    <a href={checkoutUrl}>Pay Now — {formatRs(order.totalAmount)}</a>
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full font-semibold"
+                    disabled={startingQr || busy}
+                    onClick={() => void startQrPayment(order.id)}
+                  >
+                    {startingQr ? "Preparing your QR payment…" : "Retry QR Payment"}
+                  </Button>
+                )}
+                <Button type="button" variant="ghost" onClick={reset} disabled={startingQr || busy}>
+                  Cancel Order
+                </Button>
+              </div>
+            </div>
+          </div>
         </section>
       )}
 
