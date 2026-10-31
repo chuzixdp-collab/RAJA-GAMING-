@@ -56,7 +56,7 @@ export const POST = withApi(async (req: Request) => {
         ffServer,
         userNote,
         status: "PENDING_PAYMENT",
-        paymentMethod: "EASYPAISA",
+        paymentMethod: input.paymentMethod === "CRYPTOEZE_QR" ? "CRYPTOEZE_QR" : "EASYPAISA",
       },
     });
   });

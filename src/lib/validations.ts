@@ -71,6 +71,9 @@ export const createOrderSchema = z.object({
   ffServer: z.string().trim().max(30).optional().or(z.literal("")),
   couponCode: z.string().trim().max(24).optional().or(z.literal("")),
   userNote: z.string().trim().max(300).optional().or(z.literal("")),
+  // Optional payment method. Defaults to EASYPAISA (manual transfer + admin
+  // approval). CRYPTOEZE_QR creates the order for the CryptoEze QR checkout.
+  paymentMethod: z.enum(["EASYPAISA", "CRYPTOEZE_QR"]).optional(),
 });
 
 export const submitOrderPaymentSchema = z.object({
