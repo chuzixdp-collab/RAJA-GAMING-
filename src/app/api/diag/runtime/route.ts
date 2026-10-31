@@ -11,6 +11,7 @@ import { SignJWT } from "jose";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
+import net from "node:net";
 
 const req = createRequire(import.meta.url);
 
@@ -18,6 +19,51 @@ function redact(s: string) {
   return s
     .replace(/postgres(ql)?:\/\/[^\s"']+/g, "[redacted-url]")
     .replace(/:[^\s:@/]+@/g, ":[redacted]@");
+}
+
+// Read-only probe: TCP connect (+ optional Postgres SSLRequest byte, which
+// carries no credentials) to a host:port parsed from an env-provided URL.
+function tcpProbe(host: string, port: number, family: 4 | 6, timeoutMs = 5000, sslreq = false) {
+  return new Promise<{ ok: boolean; err: string | null; ms: number }>((resolve) => {
+    const t0 = Date.now();
+    const socket = net.connect({ host, port, family });
+    const finish = (ok: boolean, err: string | null) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve({ ok, err, ms: Date.now() - t0 });
+    };
+    socket.setTimeout(timeoutMs, () => finish(false, "timeout"));
+    if (!sslreq) {
+      socket.on("connect", () => finish(true, null));
+    } else {
+      socket.on("connect", () => {
+        // Postgres SSLRequest: len=8, code=80877103 — no credentials sent
+        socket.write(Buffer.from([0x00, 0x00, 0x00, 0x08, 0x04, 0xd2, 0x16, 0x2f]));
+        socket.once("data", (d: Buffer) => finish(d[0] === 0x53, d[0] === 0x53 ? null : `unexpected-byte:${d[0]}`));
+      });
+    }
+    socket.on("error", (e) => finish(false, (e as NodeJS.ErrnoException).code || e.message));
+  });
+}
+
+async function probeEnvUrl(label: string, raw: string | undefined, sslreq: boolean) {
+  if (!raw) return { present: false };
+  let host = "";
+  let port = 5432;
+  try {
+    const u = new URL(raw.trim());
+    host = u.hostname;
+    port = Number(u.port || 5432);
+  } catch {
+    return { present: true, parse: "failed" };
+  }
+  if (!host || !/^postgres(ql)?$/.test(new URL(raw.trim()).protocol.replace(":", ""))) {
+    return { present: true, parse: "non-network" };
+  }
+  const v4 = await tcpProbe(host, port, 4, 5000, sslreq);
+  const v6 = await tcpProbe(host, port, 6, 5000, sslreq);
+  console.log(`[diag] ${label}: host=${host} tcpV4=${v4.ok}(${v4.ms}ms,${v4.err}) tcpV6=${v6.ok}(${v6.ms}ms,${v6.err}) sslreq=${sslreq}`);
+  return { present: true, host, port, v4, v6 };
 }
 
 export const runtime = "nodejs";
@@ -78,8 +124,20 @@ export async function GET() {
     const count = await db.diamondPackage.count();
     dbQuery = { ok: true, count, ms: Date.now() - t0 };
   } catch (e) {
-    dbQuery = { ok: false, ...errShape(e) };
+    dbQuery = { ok: false, ms: Date.now() - started, ...errShape(e) };
   }
+
+  // Raw network probes from INSIDE the function runtime (no credentials).
+  const runtimeProbePooled = await probeEnvUrl(
+    "DATABASE_URL(pooled)",
+    process.env.DATABASE_URL,
+    true,
+  );
+  const runtimeProbeDirect = await probeEnvUrl(
+    "DIRECT_DATABASE_URL(direct)",
+    process.env.DIRECT_DATABASE_URL,
+    true,
+  );
 
   let jwtSign: unknown = "skipped";
   try {
@@ -107,6 +165,8 @@ export async function GET() {
       platform: `${process.platform}-${process.arch}`,
       bundledEngines,
       env,
+      runtimeProbePooled,
+      runtimeProbeDirect,
       dbQuery,
       jwtSign,
       totalMs: Date.now() - started,
