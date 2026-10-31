@@ -1,13 +1,39 @@
+# ============================================================
+# Netlify build configuration
+#
+# Migration safety model (schema.prisma defines `directUrl = env("DIRECT_DATABASE_URL")`,
+# so ALL `prisma migrate` commands connect via DIRECT_DATABASE_URL):
+#
+# - Deploy previews / branch deploys: migrations are verified against an
+#   EPHEMERAL Postgres created and destroyed inside the build container
+#   (scripts/ci-migrate-isolated.mjs). They NEVER touch any
+#   environment-configured database. A TCP reachability probe for the
+#   production migration target is logged, and a booleans-only summary is
+#   published at /db-check.json.
+#
+# - Production: `prisma migrate deploy` runs against DIRECT_DATABASE_URL
+#   before the build. A migration failure fails the build, so a broken
+#   deploy can never reach production. ci-db-check.mjs logs TCP reachability
+#   of the migration target BEFORE migrating to make connection failures
+#   diagnosable from the build log.
+# ============================================================
+
 [build]
-  # Apply pending Prisma migrations before building. Uses the direct (non-pooled)
-  # database URL configured in Netlify (DIRECT_DATABASE_URL), falling back to
-  # DATABASE_URL only if the direct one is absent. A migration failure fails the
-  # build, so a broken deploy can never reach production.
-  command = "DATABASE_URL=\"${DIRECT_DATABASE_URL:-$DATABASE_URL}\" npx prisma migrate deploy && npx prisma generate && npm run build"
+  # Default command — used by deploy previews and branch deploys.
+  command = "node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
+
+[context.deploy-preview]
+  command = "node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
+
+[context.branch-deploy]
+  command = "node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
+
+[context.production]
+  command = "node scripts/ci-db-check.mjs && npx prisma migrate deploy && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
