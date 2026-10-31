@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import QRCode from "qrcode";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/client";
 import { formatRs } from "@/lib/format";
@@ -76,6 +77,40 @@ export function OrderPanel({
   >("EASYPAISA");
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [startingQr, setStartingQr] = useState(false);
+
+  // On-page QR image generated from the CryptoEze checkout URL returned by
+  // the backend, so the customer can scan it directly from the checkout
+  // screen. If generation fails, the UI offers a retry and falls back to the
+  // Pay Now button (hosted checkout). The QR is never fabricated — it encodes
+  // exactly the checkout_url the API returned for this order.
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrFailed, setQrFailed] = useState(false);
+  const [qrRetryNonce, setQrRetryNonce] = useState(0);
+
+  useEffect(() => {
+    if (!checkoutUrl) {
+      setQrDataUrl(null);
+      setQrFailed(false);
+      return;
+    }
+    let cancelled = false;
+    setQrDataUrl(null);
+    setQrFailed(false);
+    QRCode.toDataURL(checkoutUrl, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 512,
+    })
+      .then((dataUrl) => {
+        if (!cancelled) setQrDataUrl(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setQrFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [checkoutUrl, qrRetryNonce]);
 
   // order form
   const [ffUid, setFfUid] = useState("");
@@ -518,16 +553,61 @@ export function OrderPanel({
                 <QrCode className="h-4 w-4" aria-hidden="true" /> CryptoEze Secure Checkout
               </p>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Complete your payment on the CryptoEze checkout page by scanning the QR code with your banking or wallet app.
+                Open the CryptoEze checkout by scanning the QR below or tapping Pay Now — the payment is
+                completed on CryptoEze's secure page with your banking app or wallet.
               </p>
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                 Once CryptoEze confirms your payment, this order moves to <span className="font-medium text-foreground">Payment Submitted</span> and our
                 team verifies it manually — the same review process as a manual transfer.
               </p>
+              {checkoutUrl && (
+                <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-border bg-background/70 p-4">
+                  {qrDataUrl ? (
+                    <img
+                      src={qrDataUrl}
+                      alt="CryptoEze payment QR code — scan to pay"
+                      className="h-44 w-44 rounded-md border border-border bg-white p-2"
+                    />
+                  ) : qrFailed ? (
+                    <div className="flex w-full flex-col items-center gap-2">
+                      <p className="text-center text-xs text-destructive">
+                        QR image could not be generated. Try again, or use the Pay Now button below to open the secure
+                        checkout.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => setQrRetryNonce((n) => n + 1)}
+                      >
+                        Try Again
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      className="flex h-44 w-44 items-center justify-center rounded-md bg-muted"
+                      role="status"
+                      aria-label="Generating your payment QR code"
+                    >
+                      <span className="animate-pulse text-xs text-muted-foreground">Generating QR…</span>
+                    </div>
+                  )}
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                    Scan this QR to open the CryptoEze secure checkout for order{" "}
+                    <span className="font-medium text-foreground">{order.orderNumber}</span> and pay{" "}
+                    <span className="font-medium text-foreground">{formatRs(order.totalAmount)}</span> there with your
+                    banking app or wallet. Or tap <span className="font-medium text-foreground">Pay Now</span> to open it
+                    in a new tab. Pay only once — this QR is linked to this order only.
+                  </p>
+                </div>
+              )}
               <div className="mt-4 flex flex-col gap-2">
                 {checkoutUrl ? (
                   <Button asChild className="w-full font-semibold">
-                    <a href={checkoutUrl}>Pay Now — {formatRs(order.totalAmount)}</a>
+                    <a href={checkoutUrl} target="_blank" rel="noopener noreferrer">
+                      Pay Now — {formatRs(order.totalAmount)}
+                    </a>
                   </Button>
                 ) : (
                   <Button
