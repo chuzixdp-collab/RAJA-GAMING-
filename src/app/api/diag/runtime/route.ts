@@ -8,6 +8,17 @@
  */
 import { NextResponse } from "next/server";
 import { SignJWT } from "jose";
+import { createRequire } from "node:module";
+import fs from "node:fs";
+import path from "node:path";
+
+const req = createRequire(import.meta.url);
+
+function redact(s: string) {
+  return s
+    .replace(/postgres(ql)?:\/\/[^\s"']+/g, "[redacted-url]")
+    .replace(/:[^\s:@/]+@/g, ":[redacted]@");
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,11 +40,29 @@ const ENV_NAMES = [
 ] as const;
 
 function errShape(e: unknown) {
-  const anyErr = e as { name?: string; code?: string };
+  const anyErr = e as { name?: string; code?: string; message?: string };
   return {
     name: anyErr?.name ?? "Unknown",
     code: typeof anyErr?.code === "string" ? anyErr.code : null,
+    message: anyErr?.message ? redact(String(anyErr.message)).slice(0, 500) : null,
   };
+}
+
+let bundledEngines: unknown = "unavailable";
+try {
+  const idx = req.resolve(".prisma/client/index.js");
+  const dir = path.dirname(idx);
+  bundledEngines = fs
+    .readdirSync(dir)
+    .filter(
+      (f) =>
+        f.includes("query_engine") ||
+        f.includes("query_engine-") ||
+        f.endsWith(".so.node") ||
+        f.startsWith("schema"),
+    );
+} catch (e) {
+  bundledEngines = errShape(e);
 }
 
 export async function GET() {
@@ -75,6 +104,8 @@ export async function GET() {
     data: {
       note: "booleans and error codes only — no values",
       nodeVersion: process.version,
+      platform: `${process.platform}-${process.arch}`,
+      bundledEngines,
       env,
       dbQuery,
       jwtSign,
