@@ -1,5 +1,9 @@
 [build]
-  command = "npx prisma generate && npm run build"
+  # Apply pending Prisma migrations before building. Uses the direct (non-pooled)
+  # database URL configured in Netlify (DIRECT_DATABASE_URL), falling back to
+  # DATABASE_URL only if the direct one is absent. A migration failure fails the
+  # build, so a broken deploy can never reach production.
+  command = "DATABASE_URL=\"${DIRECT_DATABASE_URL:-$DATABASE_URL}\" npx prisma migrate deploy && npx prisma generate && npm run build"
   publish = ".next"
 
 [build.environment]
