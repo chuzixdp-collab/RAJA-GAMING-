@@ -12,6 +12,8 @@ import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
+import tls from "node:tls";
+import dns from "node:dns";
 
 const req = createRequire(import.meta.url);
 
@@ -21,49 +23,63 @@ function redact(s: string) {
     .replace(/:[^\s:@/]+@/g, ":[redacted]@");
 }
 
-// Read-only probe: TCP connect (+ optional Postgres SSLRequest byte, which
-// carries no credentials) to a host:port parsed from an env-provided URL.
-function tcpProbe(host: string, port: number, family: 4 | 6, timeoutMs = 5000, sslreq = false) {
-  return new Promise<{ ok: boolean; err: string | null; ms: number }>((resolve) => {
+const SSLREQ = Buffer.from([0x00, 0x00, 0x00, 0x08, 0x04, 0xd2, 0x16, 0x2f]);
+
+// Raw TCP (family-pinned): optionally SSLRequest, optionally then TLS with SNI,
+// then read the first post-TLS server message type (Authentication request) —
+// NO credentials are ever sent.
+function pgPathProbe(host: string, port: number, family: 4 | 6, wantTls: boolean, timeoutMs = 6000) {
+  return new Promise<{ ok: boolean; stage: string; err: string | null; ms: number }>((resolve) => {
     const t0 = Date.now();
-    const socket = net.connect({ host, port, family });
-    const finish = (ok: boolean, err: string | null) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve({ ok, err, ms: Date.now() - t0 });
+    const done = (ok: boolean, stage: string, err: string | null) => {
+      resolve({ ok, stage, err, ms: Date.now() - t0 });
     };
-    socket.setTimeout(timeoutMs, () => finish(false, "timeout"));
-    if (!sslreq) {
-      socket.on("connect", () => finish(true, null));
-    } else {
-      socket.on("connect", () => {
-        // Postgres SSLRequest: len=8, code=80877103 — no credentials sent
-        socket.write(Buffer.from([0x00, 0x00, 0x00, 0x08, 0x04, 0xd2, 0x16, 0x2f]));
-        socket.once("data", (d: Buffer) => finish(d[0] === 0x53, d[0] === 0x53 ? null : `unexpected-byte:${d[0]}`));
+    const socket = net.connect({ host, port, family });
+    socket.setTimeout(timeoutMs);
+    socket.on("timeout", () => { socket.destroy(); done(false, "timeout", "timeout"); });
+    socket.on("error", (e) => done(false, "tcp", (e as NodeJS.ErrnoException).code || e.message));
+    socket.on("connect", () => {
+      if (!wantTls) {
+        socket.once("data", (d: Buffer) => { socket.destroy(); done(d[0] === 0x53, "sslrequest", d[0] === 0x53 ? null : `byte:${d[0]}`); });
+        socket.write(SSLREQ);
+        return;
+      }
+      socket.once("data", (d: Buffer) => {
+        if (d[0] !== 0x53) { socket.destroy(); done(false, "sslrequest", `byte:${d[0]}`); return; }
+        const tlsSocket = tls.connect({ socket, servername: host, rejectUnauthorized: false }, () => {
+          // send StartupMessage (protocol 3.0, user "diag_probe", db "postgres") —
+          // no credentials; server will reply with an authentication request.
+          const params = Buffer.from(`user\0diag_probe\0database\0postgres\0\0`, "utf8");
+          const len = 4 + 4 + params.length;
+          const startup = Buffer.alloc(len);
+          startup.writeUInt32BE(len, 0);
+          startup.writeUInt32BE(196608, 4);
+          params.copy(startup, 8);
+          tlsSocket.once("data", (d2: Buffer) => {
+            // message type byte: 'R' (0x52) = authentication request → server reachable
+            const type = String.fromCharCode(d2[0]);
+            tlsSocket.destroy();
+            done(type === "R", "tls+startup", type === "R" ? null : `msg-type:${type}`);
+          });
+          tlsSocket.once("error", (e2) => done(false, "tls-post", (e2 as Error).message));
+          tlsSocket.write(startup);
+        });
+        tlsSocket.setTimeout(timeoutMs);
+        tlsSocket.on("error", (e2) => done(false, "tls", (e2 as Error).message));
+        tlsSocket.on("timeout", () => { tlsSocket.destroy(); done(false, "tls", "timeout"); });
       });
-    }
-    socket.on("error", (e) => finish(false, (e as NodeJS.ErrnoException).code || e.message));
+      socket.write(SSLREQ);
+    });
   });
 }
 
-async function probeEnvUrl(label: string, raw: string | undefined, sslreq: boolean) {
-  if (!raw) return { present: false };
-  let host = "";
-  let port = 5432;
-  try {
-    const u = new URL(raw.trim());
-    host = u.hostname;
-    port = Number(u.port || 5432);
-  } catch {
-    return { present: true, parse: "failed" };
-  }
-  if (!host || !/^postgres(ql)?$/.test(new URL(raw.trim()).protocol.replace(":", ""))) {
-    return { present: true, parse: "non-network" };
-  }
-  const v4 = await tcpProbe(host, port, 4, 5000, sslreq);
-  const v6 = await tcpProbe(host, port, 6, 5000, sslreq);
-  console.log(`[diag] ${label}: host=${host} tcpV4=${v4.ok}(${v4.ms}ms,${v4.err}) tcpV6=${v6.ok}(${v6.ms}ms,${v6.err}) sslreq=${sslreq}`);
-  return { present: true, host, port, v4, v6 };
+function dnsOrder(host: string) {
+  return new Promise<{ ok: boolean; order?: string[]; err?: string }>((resolve) => {
+    dns.lookup(host, { all: true, verbatim: true }, (err, addrs) => {
+      if (err) resolve({ ok: false, err: (err as NodeJS.ErrnoException).code });
+      else resolve({ ok: true, order: addrs.map((a) => (a.family === 6 ? "AAAA" : "A")) });
+    });
+  });
 }
 
 export const runtime = "nodejs";
@@ -127,17 +143,36 @@ export async function GET() {
     dbQuery = { ok: false, ms: Date.now() - started, ...errShape(e) };
   }
 
-  // Raw network probes from INSIDE the function runtime (no credentials).
-  const runtimeProbePooled = await probeEnvUrl(
-    "DATABASE_URL(pooled)",
-    process.env.DATABASE_URL,
-    true,
-  );
-  const runtimeProbeDirect = await probeEnvUrl(
-    "DIRECT_DATABASE_URL(direct)",
-    process.env.DIRECT_DATABASE_URL,
-    true,
-  );
+  // Full pre-auth Postgres path probes from INSIDE the function runtime —
+  // family-pinned IPv4 vs IPv6, no credentials ever sent.
+  async function deepProbe(raw: string | undefined) {
+    if (!raw) return { present: false };
+    let host = "";
+    let port = 5432;
+    try {
+      const u = new URL(raw.trim());
+      host = u.hostname;
+      port = Number(u.port || 5432);
+    } catch {
+      return { present: true, parse: "failed" };
+    }
+    const dnsOrderResult = await dnsOrder(host);
+    const v4Plain = await pgPathProbe(host, port, 4, false);
+    const v4Tls = await pgPathProbe(host, port, 4, true);
+    const v6Plain = await pgPathProbe(host, port, 6, false);
+    return {
+      present: true,
+      host,
+      port,
+      dnsOrderResult,
+      v4Plain,
+      v4Tls,
+      v6Plain,
+    };
+  }
+
+  const runtimeProbePooled = await deepProbe(process.env.DATABASE_URL);
+  const runtimeProbeDirect = await deepProbe(process.env.DIRECT_DATABASE_URL);
 
   let jwtSign: unknown = "skipped";
   try {
