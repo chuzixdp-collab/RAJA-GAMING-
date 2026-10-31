@@ -97,8 +97,10 @@ const result = {
 
 if (WRITE_JSON && (CONTEXT === "deploy-preview" || CONTEXT === "branch-deploy")) {
   // Booleans only — no hostnames, no credentials.
-  fs.mkdirSync(path.join(".next"), { recursive: true });
-  fs.writeFileSync(path.join(".next", "db-check.json"), JSON.stringify(result, null, 2));
-  console.log("[ci-db-check] booleans-only summary written to /db-check.json on the preview site");
+  // Written into public/ BEFORE `next build` so the Next.js runtime serves it
+  // at /db-check.json (files in .next/ are not routable on Netlify).
+  fs.mkdirSync(path.join("public"), { recursive: true });
+  fs.writeFileSync(path.join("public", "db-check.json"), JSON.stringify(result, null, 2));
+  console.log("[ci-db-check] booleans-only summary will be served at /db-check.json on the preview site");
 }
 console.log("[ci-db-check] done:", JSON.stringify(result));

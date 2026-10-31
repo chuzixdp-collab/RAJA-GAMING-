@@ -20,17 +20,19 @@
 
 [build]
   # Default command — used by deploy previews and branch deploys.
-  command = "node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
+  # Order matters: ci-db-check.mjs writes public/db-check.json BEFORE
+  # `next build` so the Next.js runtime can serve it on the preview site.
+  command = "node scripts/ci-db-check.mjs --write-json && node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
 
 [context.deploy-preview]
-  command = "node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
+  command = "node scripts/ci-db-check.mjs --write-json && node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build"
 
 [context.branch-deploy]
-  command = "node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
+  command = "node scripts/ci-db-check.mjs --write-json && node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build"
 
 [context.production]
   command = "node scripts/ci-db-check.mjs && npx prisma migrate deploy && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
