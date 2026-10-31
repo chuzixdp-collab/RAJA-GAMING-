@@ -13,8 +13,11 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import QRCode from "qrcode";
 import { toast } from "sonner";
+import {
+  buildPaymentQrDataUrl,
+  resolveQrRenderSource,
+} from "@/lib/cryptoeze";
 import { apiFetch } from "@/lib/client";
 import { formatRs } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -78,17 +81,22 @@ export function OrderPanel({
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [startingQr, setStartingQr] = useState(false);
 
-  // On-page QR image generated from the CryptoEze checkout URL returned by
-  // the backend, so the customer can scan it directly from the checkout
-  // screen. If generation fails, the UI offers a retry and falls back to the
-  // Pay Now button (hosted checkout). The QR is never fabricated — it encodes
-  // exactly the checkout_url the API returned for this order.
+  // Scan-to-pay QR payload returned by the CryptoEze API for this order
+  // (`qr_string`). The on-page QR image is generated ONLY from this payload;
+  // `checkout_url` is never used as QR content — it is only the fallback
+  // "Open Payment Page" link. If QR generation fails, the UI offers a retry
+  // alongside the same Open Payment Page fallback.
+  const [qrString, setQrString] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrFailed, setQrFailed] = useState(false);
   const [qrRetryNonce, setQrRetryNonce] = useState(0);
 
   useEffect(() => {
-    if (!checkoutUrl) {
+    // resolveQrRenderSource is the single gatekeeper: the QR image is rendered
+    // from qr_string only. checkout_url resolves to a "checkout_fallback"
+    // source, which the UI renders as a link — never as a QR image.
+    const source = resolveQrRenderSource({ qrString, checkoutUrl });
+    if (source.kind !== "qr_string") {
       setQrDataUrl(null);
       setQrFailed(false);
       return;
@@ -96,11 +104,7 @@ export function OrderPanel({
     let cancelled = false;
     setQrDataUrl(null);
     setQrFailed(false);
-    QRCode.toDataURL(checkoutUrl, {
-      errorCorrectionLevel: "M",
-      margin: 2,
-      width: 512,
-    })
+    buildPaymentQrDataUrl(source.value)
       .then((dataUrl) => {
         if (!cancelled) setQrDataUrl(dataUrl);
       })
@@ -110,7 +114,7 @@ export function OrderPanel({
     return () => {
       cancelled = true;
     };
-  }, [checkoutUrl, qrRetryNonce]);
+  }, [qrString, checkoutUrl, qrRetryNonce]);
 
   // order form
   const [ffUid, setFfUid] = useState("");
@@ -160,14 +164,20 @@ export function OrderPanel({
   async function startQrPayment(orderId: string) {
     setStartingQr(true);
     try {
-      const res = await apiFetch<{ success: boolean; checkoutUrl: string }>(
-        "/api/payments/cryptoeze",
-        {
-          method: "POST",
-          json: { orderId },
-        }
-      );
+      const res = await apiFetch<{
+        success: boolean;
+        checkoutUrl: string;
+        qrString?: string | null;
+      }>("/api/payments/cryptoeze", {
+        method: "POST",
+        json: { orderId },
+      });
       setCheckoutUrl(res.checkoutUrl);
+      setQrString(
+        typeof res.qrString === "string" && res.qrString.length > 0
+          ? res.qrString
+          : null
+      );
       toast.success(
         "CryptoEze QR checkout is ready — complete the payment to continue."
       );
@@ -204,6 +214,7 @@ export function OrderPanel({
     setSubmitted(false);
     setPaymentMethod("EASYPAISA");
     setCheckoutUrl(null);
+    setQrString(null);
     setStartingQr(false);
     setFfUid("");
     setFfServer("");
@@ -212,6 +223,10 @@ export function OrderPanel({
     setTrxId("");
     setScreenshot(null);
   }
+
+  // Single source of truth for what the QR area renders: the real payment QR
+  // from qr_string, or the checkout_url fallback link — never a QR from the URL.
+  const qrSource = resolveQrRenderSource({ qrString, checkoutUrl });
 
   return (
     <div className="space-y-8">
@@ -553,8 +568,9 @@ export function OrderPanel({
                 <QrCode className="h-4 w-4" aria-hidden="true" /> CryptoEze Secure Checkout
               </p>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Open the CryptoEze checkout by scanning the QR below or tapping Pay Now — the payment is
-                completed on CryptoEze's secure page with your banking app or wallet.
+                Scan the QR below with your banking or wallet app to pay — it carries the exact payment payload
+                CryptoEze generated for this order. Prefer a browser? Tap Open Payment Page to complete the payment
+                on CryptoEze's secure page.
               </p>
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                 Once CryptoEze confirms your payment, this order moves to <span className="font-medium text-foreground">Payment Submitted</span> and our
@@ -562,51 +578,65 @@ export function OrderPanel({
               </p>
               {checkoutUrl && (
                 <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-border bg-background/70 p-4">
-                  {qrDataUrl ? (
-                    <img
-                      src={qrDataUrl}
-                      alt="CryptoEze payment QR code — scan to pay"
-                      className="h-44 w-44 rounded-md border border-border bg-white p-2"
-                    />
-                  ) : qrFailed ? (
-                    <div className="flex w-full flex-col items-center gap-2">
-                      <p className="text-center text-xs text-destructive">
-                        QR image could not be generated. Try again, or use the Pay Now button below to open the secure
-                        checkout.
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => setQrRetryNonce((n) => n + 1)}
+                  {qrSource.kind === "qr_string" ? (
+                    qrDataUrl ? (
+                      <img
+                        src={qrDataUrl}
+                        alt="CryptoEze payment QR — scan with your banking or wallet app to pay"
+                        className="h-44 w-44 rounded-md border border-border bg-white p-2"
+                      />
+                    ) : qrFailed ? (
+                      <div className="flex w-full flex-col items-center gap-2">
+                        <p className="text-center text-xs text-destructive">
+                          QR image could not be generated from the payment payload. Try again, or use the Open Payment
+                          Page button below.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => setQrRetryNonce((n) => n + 1)}
+                        >
+                          Try Again
+                        </Button>
+                      </div>
+                    ) : (
+                      <div
+                        className="flex h-44 w-44 items-center justify-center rounded-md bg-muted"
+                        role="status"
+                        aria-label="Generating your payment QR code"
                       >
-                        Try Again
-                      </Button>
-                    </div>
+                        <span className="animate-pulse text-xs text-muted-foreground">Generating QR…</span>
+                      </div>
+                    )
                   ) : (
-                    <div
-                      className="flex h-44 w-44 items-center justify-center rounded-md bg-muted"
-                      role="status"
-                      aria-label="Generating your payment QR code"
-                    >
-                      <span className="animate-pulse text-xs text-muted-foreground">Generating QR…</span>
+                    <div className="flex w-full flex-col items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 p-4">
+                      <p className="text-center text-xs text-muted-foreground">
+                        CryptoEze did not return a scan-to-pay QR payload for this order. Tap{" "}
+                        <span className="font-medium text-foreground">Open Payment Page</span> below — CryptoEze's
+                        secure checkout displays the wallet QR there.
+                      </p>
                     </div>
                   )}
-                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                    Scan this QR to open the CryptoEze secure checkout for order{" "}
-                    <span className="font-medium text-foreground">{order.orderNumber}</span> and pay{" "}
-                    <span className="font-medium text-foreground">{formatRs(order.totalAmount)}</span> there with your
-                    banking app or wallet. Or tap <span className="font-medium text-foreground">Pay Now</span> to open it
-                    in a new tab. Pay only once — this QR is linked to this order only.
-                  </p>
+                  {qrSource.kind === "qr_string" && (
+                    <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                      Scan this QR to pay <span className="font-medium text-foreground">{formatRs(order.totalAmount)}</span>{" "}
+                      for order <span className="font-medium text-foreground">{order.orderNumber}</span> with your banking
+                      app or wallet. Pay only once — this QR is linked to this order only.
+                    </p>
+                  )}
                 </div>
               )}
               <div className="mt-4 flex flex-col gap-2">
                 {checkoutUrl ? (
-                  <Button asChild className="w-full font-semibold">
+                  <Button
+                    asChild
+                    variant={qrSource.kind === "qr_string" ? "outline" : "default"}
+                    className="w-full font-semibold"
+                  >
                     <a href={checkoutUrl} target="_blank" rel="noopener noreferrer">
-                      Pay Now — {formatRs(order.totalAmount)}
+                      Open Payment Page — {formatRs(order.totalAmount)}
                     </a>
                   </Button>
                 ) : (

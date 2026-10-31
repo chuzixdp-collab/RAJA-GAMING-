@@ -1,6 +1,7 @@
 
 import { ApiError, apiSuccess, assertSameOrigin, handleApiError } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { parseCryptoEzePaymentData } from "@/lib/cryptoeze";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -9,8 +10,14 @@ export const dynamic = "force-dynamic";
 /**
  * CryptoEze PKR QR checkout (https://cryptoeze.com/docs):
  *   POST /api/v1/pkr   { method, amount, order_id, customer_email, return_url }
- *   -> 200 { data: { id, status: "pending", checkout_url } }
+ *   -> 200 { data: { id, status: "pending", checkout_url, qr_string } }
  *   GET  /api/v1/pkr/{id} to resume an already-created payment.
+ *
+ * `qr_string` (confirmed returned for every order by CryptoEze admin) is the
+ * scan-to-pay QR payload and is passed through to the client so the checkout
+ * screen can render the real payment QR. `checkout_url` is passed through as
+ * the fallback "Open Payment Page" link only — the payment QR is never
+ * generated from `checkout_url` (enforced in @/lib/cryptoeze + the UI).
  * Documented errors: 401 authentication, 403 method not active on the account,
  * 409 idempotency_conflict, 429 rate_limited.
  *
@@ -107,24 +114,21 @@ export async function POST(req: Request) {
 
       if (check.ok) {
         const result = await check.json().catch(() => null);
-        const payment = result?.data;
+        const payment = parseCryptoEzePaymentData(result);
 
         // order_id is echoed per the docs' create response; the GET response
         // shape is not fully documented, so enforce the match only when the
         // field is present (absent => trust the stored paymentTrxId, which
         // this order created via Idempotency-Key).
         const orderMatches =
-          payment?.order_id == null ||
-          payment.order_id === order.orderNumber;
+          payment?.providerOrderId == null ||
+          payment.providerOrderId === order.orderNumber;
 
-        if (
-          payment?.checkout_url &&
-          payment?.status === "pending" &&
-          orderMatches
-        ) {
+        if (payment && payment.status === "pending" && orderMatches) {
           return apiSuccess({
             success: true,
-            checkoutUrl: payment.checkout_url,
+            checkoutUrl: payment.checkoutUrl,
+            qrString: payment.qrString,
           });
         }
       } else {
@@ -161,13 +165,12 @@ export async function POST(req: Request) {
     });
 
     const result = await response.json().catch(() => null);
-    const payment = result?.data;
+    // Single validated parsing point for the provider response: requires the
+    // documented id + checkout_url, tolerates an absent qr_string (client
+    // falls back to the Open Payment Page link) — never trusts extra fields.
+    const payment = parseCryptoEzePaymentData(result);
 
-    if (
-      !response.ok ||
-      typeof payment?.id !== "string" ||
-      typeof payment?.checkout_url !== "string"
-    ) {
+    if (!response.ok || !payment) {
       console.error("[payments/cryptoeze] create payment failed", {
         status: response.status,
         orderId: order.orderNumber,
@@ -208,7 +211,8 @@ export async function POST(req: Request) {
 
     return apiSuccess({
       success: true,
-      checkoutUrl: payment.checkout_url,
+      checkoutUrl: payment.checkoutUrl,
+      qrString: payment.qrString,
     });
   } catch (error) {
     // handleApiError keeps ApiError statuses (401 stays 401, 503 stays 503),
