@@ -74,7 +74,24 @@ function makeClient(): PrismaClient {
   if (!connectionString) {
     throw new Error('DATABASE_URL is not set')
   }
-  const adapter = new PrismaPg({ connectionString })
+  // TLS is fully verified for remote databases: certificate chain AND
+  // hostname (Node's bundled Mozilla CA store; Neon uses publicly trusted
+  // certificates — verified 2026-11-01 against both the direct and pooled
+  // endpoints). Verification is never disabled; only local databases skip
+  // TLS. Explicit verification also future-proofs against pg v9, where
+  // `sslmode=require` reverts to weaker libpq semantics.
+  const hostname = (() => {
+    try {
+      return new URL(connectionString.trim()).hostname
+    } catch {
+      return ''
+    }
+  })()
+  const isLocalDb = ['localhost', '127.0.0.1', '::1'].includes(hostname)
+  const adapter = new PrismaPg({
+    connectionString,
+    ssl: isLocalDb ? false : { rejectUnauthorized: true },
+  })
   return new PrismaClient({ adapter, log: ['error'] })
 }
 
