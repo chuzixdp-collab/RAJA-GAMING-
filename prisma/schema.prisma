@@ -578,3 +578,12 @@ model Upload {
   uploadedById String?
   createdAt   DateTime  @default(now())
 }
+// CryptoEze webhook event deduplication
+model CryptoEzeWebhookEvent {
+  id          String   @id
+  eventType   String
+  processedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([eventType, createdAt])
+}

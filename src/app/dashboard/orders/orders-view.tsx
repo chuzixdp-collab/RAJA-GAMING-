@@ -133,6 +133,7 @@ export function OrdersView({ orders }: { orders: OrderDTO[] }) {
                       <div className="font-medium">{o.packageTitle}</div>
                       <div className="text-xs text-muted-foreground">
                         {o.diamonds.toLocaleString()} diamonds
+                        {o.paymentMethod === "CRYPTOEZE_QR" ? " · CryptoEze QR" : ""}
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{o.ffUid}</TableCell>

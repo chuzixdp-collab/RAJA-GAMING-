@@ -1,9 +1,53 @@
+# ============================================================
+# Netlify build configuration
+#
+# Migration safety model (schema.prisma defines `directUrl = env("DIRECT_DATABASE_URL")`,
+# so ALL `prisma migrate` commands connect via DIRECT_DATABASE_URL):
+#
+# - Deploy previews / branch deploys: migrations are verified against an
+#   EPHEMERAL Postgres created and destroyed inside the build container
+#   (scripts/ci-migrate-isolated.mjs). They NEVER touch any
+#   environment-configured database. A TCP reachability probe for the
+#   production migration target is logged, and a booleans-only summary is
+#   published at /db-check.json.
+#
+# - Production: scripts/migrate-deploy.mjs applies pending migrations via
+#   node-postgres against DIRECT_DATABASE_URL (schema.prisma directUrl). The
+#   ledger (_prisma_migrations) stays Prisma-CLI-compatible, every migration
+#   is transactional and additive-only, and any failure fails the build so a
+#   broken deploy can never reach production. The native-engine
+#   `prisma migrate deploy` is NOT used because that engine cannot negotiate
+#   with the Neon proxy (see scripts/migrate-deploy.mjs and src/lib/db.ts).
+#   ci-db-check.mjs logs TCP reachability of the migration target BEFORE
+#   migrating to make connection failures diagnosable from the build log.
+# ============================================================
+
 [build]
-  command = "npx prisma generate && npm run build"
+  # Default command — used by deploy previews and branch deploys.
+  # Order matters: ci-db-check.mjs writes public/db-check.json BEFORE
+  # `next build` so the Next.js runtime can serve it on the preview site.
+  command = "node scripts/ci-db-check.mjs --write-json && node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
+
+[context.deploy-preview]
+  command = "node scripts/ci-db-check.mjs --write-json && node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build"
+
+[context.branch-deploy]
+  command = "node scripts/ci-db-check.mjs --write-json && node scripts/ci-migrate-isolated.mjs && npx prisma generate && npm run build"
+
+# - Production: scripts/migrate-deploy.mjs applies pending migrations via
+#   node-postgres against DIRECT_DATABASE_URL (schema.prisma directUrl), keeps
+#   the `_prisma_migrations` ledger Prisma-CLI-compatible, is transactional,
+#   additive-only, idempotent, and baselines safely if the database was created
+#   outside of migrations. Any failure fails the build, so a broken deploy can
+#   never reach production. (The native-engine `prisma migrate deploy` is NOT
+#   used because that engine cannot negotiate with the Neon proxy — see
+#   scripts/migrate-deploy.mjs and src/lib/db.ts comments.)
+[context.production]
+  command = "node scripts/ci-db-check.mjs && node scripts/migrate-deploy.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

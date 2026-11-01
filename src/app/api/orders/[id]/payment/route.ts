@@ -25,6 +25,12 @@ export const POST = withApi<{ params: Promise<{ id: string }> }>(async (req, ctx
   if (order.status !== "PENDING_PAYMENT") {
     throw new ApiError("Payment for this order has already been submitted.", 400);
   }
+  if (order.paymentMethod === "CRYPTOEZE_QR") {
+    throw new ApiError(
+      "This order uses CryptoEze QR payment. Complete it from the CryptoEze checkout page — manual transaction IDs are not accepted here.",
+      400
+    );
+  }
 
   const updated = await db.$transaction(async (tx) => {
     const o = await tx.topUpOrder.update({

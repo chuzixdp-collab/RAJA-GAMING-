@@ -10,7 +10,10 @@ const nextConfig: NextConfig = {
   // Allows a verification build to run beside the dev server without
   // touching its .next directory (NEXT_DIST_DIR=.next-build).
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  serverExternalPackages: ["@netlify/blobs", "bcryptjs"],
+  // Externalized so their native/dynamic-require internals are traced
+  // correctly into serverless bundles. @prisma/adapter-pg + pg route all
+  // database traffic through node-postgres (see src/lib/db.ts).
+  serverExternalPackages: ["@netlify/blobs", "bcryptjs", "@prisma/adapter-pg", "pg"],
   images: {
     remotePatterns: [],
   },
