@@ -60,7 +60,8 @@ export const GET = withApi(async (req: Request) => {
     take: 100,
     include: {
       user: { select: { id: true, email: true, name: true, referredById: true } },
-      package: { select: { title: true } },
+      package: { select: { title: true, supplierSource: true, supplierGameCode: true, supplierPack: true, supplierStock: true } },
+      supplierOrder: true,
     },
   });
 

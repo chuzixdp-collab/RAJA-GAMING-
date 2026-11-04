@@ -71,6 +71,15 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    title: "Supplier (ALUU)",
+    description: "Free Fire auto-delivery pricing hints. The game code itself is managed on the Supplier page.",
+    fields: [
+      { key: "ALUU_FF_GAMECODE", label: "Free Fire game code", type: "text", hint: "Resolved from the ALUU games list (Supplier page). Leave empty to disable supplier sync." },
+      { key: "ALUU_USD_TO_PKR", label: "USD → PKR rate", type: "text", hint: "Used to suggest sale prices when syncing supplier packs. Defaults to 280." },
+      { key: "ALUU_PRICE_MARKUP_PERCENT", label: "Supplier price markup (%)", type: "text", hint: "Suggested margin added over the supplier price. 0 sells at cost." },
+    ],
+  },
+  {
     title: "Maintenance",
     description: "Emergency switch for taking the public site offline.",
     fields: [
