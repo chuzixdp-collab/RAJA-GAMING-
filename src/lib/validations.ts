@@ -3,6 +3,7 @@
  * NOTE: zod v4.
  */
 import { z } from "zod";
+import { isValidTheme } from "@/lib/theme";
 
 const cuidLike = z.string().min(1).max(64);
 
@@ -377,7 +378,13 @@ export const settingsUpdateSchema = z.object(
       "REVIEWS_AUTO_APPROVE", "MAINTENANCE_MODE", "MAINTENANCE_MESSAGE",
     ].map((k) => [k, z.string().max(5000).optional()])
   ) as Record<string, z.ZodOptional<z.ZodString>>
-);
+).extend({
+  /** Admin-controlled global theme. Must be one of the registered theme ids. */
+  SITE_THEME: z
+    .string()
+    .refine(isValidTheme, { message: "Unknown theme." })
+    .optional(),
+});
 
 export const reviewModerationSchema = z.object({
   reviewId: cuidLike,

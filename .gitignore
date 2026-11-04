@@ -54,3 +54,6 @@ server.log
 /skills/
 # generated during Netlify builds (booleans-only preview diagnostic)
 public/db-check.json
+
+# Local embedded dev database (scripts/dev-db.ts) — never commit
+db/

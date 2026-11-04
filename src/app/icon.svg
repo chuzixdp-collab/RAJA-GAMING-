@@ -1,12 +1,31 @@
-<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="rg-gold" x1="6" y1="8" x2="42" y2="40" gradientUnits="userSpaceOnUse">
+    <linearGradient id="rgMetal" x1="14" y1="22" x2="50" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE9A8"/>
+      <stop offset="0.5" stop-color="#F5B90B"/>
+      <stop offset="1" stop-color="#B8860B"/>
+    </linearGradient>
+    <linearGradient id="rgCrown" x1="20" y1="6" x2="44" y2="19" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F7D774"/>
-      <stop offset="0.55" stop-color="#F5B90B"/>
-      <stop offset="1" stop-color="#D99A00"/>
+      <stop offset="1" stop-color="#F5B90B"/>
     </linearGradient>
   </defs>
-  <rect width="48" height="48" rx="10" fill="#09090B"/>
-  <path d="M9 33 L7 15 L17 22.5 L24 10 L31 22.5 L41 15 L39 33 Z" fill="url(#rg-gold)"/>
-  <rect x="9" y="35" width="30" height="4.5" rx="2" fill="url(#rg-gold)" opacity="0.92"/>
+  <rect x="1.25" y="1.25" width="61.5" height="61.5" rx="14" fill="#0B0B0E" stroke="#9AA0AA" stroke-opacity="0.55" stroke-width="2.5"/>
+  <path d="M19 18.5 L22.5 9.5 L27.5 14.5 L32 7.5 L36.5 14.5 L41.5 9.5 L45 18.5 Z" fill="url(#rgCrown)" stroke="#8A6D10" stroke-width="1"/>
+  <circle cx="32" cy="14.4" r="1.8" fill="#FF3B46" stroke="#7F1D1D" stroke-width="0.6"/>
+  <g stroke="#8A6D10" stroke-width="5.5" stroke-linecap="square" stroke-linejoin="miter" fill="none" opacity="0.85" transform="translate(2.4 2.4)">
+    <path d="M13.5 53 V26.5 H26 L30.8 30.8 V36.4 L26 40.5 H13.5"/>
+    <path d="M26.5 41 L33.5 53.5"/>
+    <path d="M52.5 27.5 L48.5 23.5 H39 L35 27.5 V50.5 L39 54.5 H48.5 L52.5 50.5 V41.5 H45"/>
+  </g>
+  <g stroke="url(#rgMetal)" stroke-width="5.5" stroke-linecap="square" stroke-linejoin="miter" fill="none">
+    <path d="M13.5 53 V26.5 H26 L30.8 30.8 V36.4 L26 40.5 H13.5"/>
+    <path d="M26.5 41 L33.5 53.5"/>
+    <path d="M52.5 27.5 L48.5 23.5 H39 L35 27.5 V50.5 L39 54.5 H48.5 L52.5 50.5 V41.5 H45"/>
+  </g>
+  <g stroke="rgba(255,255,255,0.26)" stroke-width="1.4" stroke-linecap="square" stroke-linejoin="miter" fill="none" transform="translate(-0.9 -1.5)">
+    <path d="M13.5 53 V26.5 H26 L30.8 30.8 V36.4 L26 40.5 H13.5"/>
+    <path d="M26.5 41 L33.5 53.5"/>
+    <path d="M52.5 27.5 L48.5 23.5 H39 L35 27.5 V50.5 L39 54.5 H48.5 L52.5 50.5 V41.5 H45"/>
+  </g>
 </svg>

@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell, Contact, FileQuestion, Gavel, LayoutDashboard, Menu, MessageSquareQuote,
-  Package, Receipt, Settings, ShieldCheck, ShoppingBag, Star, TicketPercent,
+  Package, Palette, Receipt, Settings, ShieldCheck, ShoppingBag, Star, TicketPercent,
   Trophy, Users, Wallet, ScrollText,
 } from "lucide-react";
-import { Logo } from "@/components/brand/logo";
+import { Logo, LogoMark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { href: "/admin/reviews", label: "Reviews", icon: Star },
   { href: "/admin/contact", label: "Contact", icon: Contact },
   { href: "/admin/faqs", label: "FAQs", icon: FileQuestion },
+  { href: "/admin/appearance", label: "Website Appearance", icon: Palette },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/audit-logs", label: "Audit Logs", icon: ScrollText },
 ];
@@ -79,7 +80,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <main className="min-w-0 flex-1 pb-10">
           <div className="mb-4 flex items-center justify-between xl:hidden">
             <Link href="/admin" className="flex items-center gap-2 font-display font-bold">
-              <ShieldCheck className="h-5 w-5 text-primary" /> Admin Panel
+              <LogoMark size={26} /> Admin Panel
             </Link>
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>

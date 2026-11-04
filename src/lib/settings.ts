@@ -2,6 +2,7 @@
  * Site settings stored in the database (admin-editable), cached in memory.
  */
 import { db } from "@/lib/db";
+import { DEFAULT_THEME, isValidTheme } from "@/lib/theme";
 
 export const SETTING_KEYS = [
   "SITE_NAME",
@@ -25,6 +26,7 @@ export const SETTING_KEYS = [
   "REVIEWS_AUTO_APPROVE",
   "MAINTENANCE_MODE",
   "MAINTENANCE_MESSAGE",
+  "SITE_THEME",
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -46,6 +48,7 @@ export const PUBLIC_SETTING_KEYS: SettingKey[] = [
   "MARKETPLACE_ENABLED",
   "TOURNAMENTS_ENABLED",
   "REGISTRATION_PAYMENT_NOTE",
+  "SITE_THEME",
 ];
 
 type CacheEntry = { values: Record<string, string>; expiresAt: number };
@@ -77,6 +80,19 @@ export async function getSettingInt(key: SettingKey, fallback = 0): Promise<numb
   const v = await getSetting(key);
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+/**
+ * The globally active theme (admin-controlled). Falls back to the default
+ * when unset, invalid or the database is unreachable (e.g. build time).
+ */
+export async function getSiteTheme(): Promise<string> {
+  try {
+    const v = await getSetting("SITE_THEME");
+    return isValidTheme(v) ? v : DEFAULT_THEME;
+  } catch {
+    return DEFAULT_THEME;
+  }
 }
 
 export async function setSettings(entries: Record<string, string>): Promise<void> {
