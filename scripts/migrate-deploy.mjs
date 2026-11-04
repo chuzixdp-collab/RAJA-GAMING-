@@ -40,6 +40,23 @@ function fail(msg) {
   console.error(`[migrate-deploy] FAILED: ${msg}`);
 }
 
+// Context guard (fail-closed): production always runs this runner. Deploy
+// previews and branch deploys may only run it with the explicit opt-in
+// ALLOW_PREVIEW_MIGRATION=1 (set in netlify.toml), so their runtime database
+// schema always matches the Prisma Client built from this branch. Any other
+// context refuses to run — migrations must never happen by accident.
+const netlifyContext = (process.env.NETLIFY_CONTEXT || "").trim();
+const previewOptIn = process.env.ALLOW_PREVIEW_MIGRATION === "1";
+if (netlifyContext !== "production" && !previewOptIn) {
+  fail(
+    `refusing to migrate in this context (NETLIFY_CONTEXT=${netlifyContext || "unset"}).`
+  );
+  fail(
+    "This runner runs in [context.production] or, for deploy previews / branch deploys, only when the build command sets ALLOW_PREVIEW_MIGRATION=1."
+  );
+  process.exit(1);
+}
+
 const connectionString = (process.env.DIRECT_DATABASE_URL || "").trim();
 if (!/^postgres(ql)?:\/\//i.test(connectionString)) {
   fail("DIRECT_DATABASE_URL is not set to a postgres:// connection string.");
