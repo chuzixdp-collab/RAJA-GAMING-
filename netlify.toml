@@ -49,16 +49,26 @@
 [context.branch-deploy]
   command = "node scripts/ci-db-check.mjs --write-json && node scripts/ci-migrate-isolated.mjs && ALLOW_PREVIEW_MIGRATION=1 node scripts/migrate-deploy.mjs && npx prisma generate && npm run build"
 
-# - Production: scripts/migrate-deploy.mjs applies pending migrations via
-#   node-postgres against DIRECT_DATABASE_URL (schema.prisma directUrl), keeps
-#   the `_prisma_migrations` ledger Prisma-CLI-compatible, is transactional,
-#   additive-only, idempotent, and baselines safely if the database was created
-#   outside of migrations. Any failure fails the build, so a broken deploy can
-#   never reach production. (The native-engine `prisma migrate deploy` is NOT
-#   used because that engine cannot negotiate with the Neon proxy — see
-#   scripts/migrate-deploy.mjs and src/lib/db.ts comments.)
+# - Production command sequence (order matters):
+#     1. ci-db-check.mjs   — read-only TCP reachability probe of BOTH
+#                            DIRECT_DATABASE_URL and DATABASE_URL, logged before
+#                            anything else so connection failures are diagnosable.
+#     2. prisma generate   — Prisma Client from this tree's schema.prisma.
+#     3. migrate-deploy.mjs — the hardened runner applies pending migrations via
+#                            node-postgres against DIRECT_DATABASE_URL. Netlify
+#                            sets CONTEXT=production for production builds, which
+#                            is what the runner's fail-closed context guard reads.
+#     4. npm run build     — Next.js production build (runs against the migrated
+#                            schema).
+#     5. ci-db-check.mjs --write-json — final reachability check.
+#   The runner keeps the `_prisma_migrations` ledger Prisma-CLI-compatible, is
+#   transactional, additive-only, idempotent, and baselines safely if the
+#   database was created outside of migrations. Any failure fails the build, so
+#   a broken deploy can never reach production. (The native-engine
+#   `prisma migrate deploy` is NOT used because that engine cannot negotiate
+#   with the Neon proxy — see scripts/migrate-deploy.mjs and src/lib/db.ts.)
 [context.production]
-  command = "node scripts/ci-db-check.mjs && node scripts/migrate-deploy.mjs && npx prisma generate && npm run build && node scripts/ci-db-check.mjs --write-json"
+  command = "node scripts/ci-db-check.mjs && npx prisma generate && node scripts/migrate-deploy.mjs && npm run build && node scripts/ci-db-check.mjs --write-json"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

@@ -45,14 +45,22 @@ function fail(msg) {
 // ALLOW_PREVIEW_MIGRATION=1 (set in netlify.toml), so their runtime database
 // schema always matches the Prisma Client built from this branch. Any other
 // context refuses to run — migrations must never happen by accident.
-const netlifyContext = (process.env.NETLIFY_CONTEXT || "").trim();
+//
+// Netlify exposes the build context as `CONTEXT` ("production",
+// "deploy-preview", "branch-deploy"). `NETLIFY_CONTEXT` is NOT a variable
+// Netlify sets — an earlier guard that read only NETLIFY_CONTEXT always saw
+// "unset" and refused even real production builds (observed 2026-11-06:
+// production "build.command" failed with exit code 1 before any step ran).
+// `CONTEXT` is authoritative; NETLIFY_CONTEXT is kept only as a fallback for
+// local reproductions that export it manually.
+const netlifyContext = (process.env.CONTEXT || process.env.NETLIFY_CONTEXT || "").trim();
 const previewOptIn = process.env.ALLOW_PREVIEW_MIGRATION === "1";
 if (netlifyContext !== "production" && !previewOptIn) {
   fail(
-    `refusing to migrate in this context (NETLIFY_CONTEXT=${netlifyContext || "unset"}).`
+    `refusing to migrate in this context (CONTEXT=${netlifyContext || "unset"}).`
   );
   fail(
-    "This runner runs in [context.production] or, for deploy previews / branch deploys, only when the build command sets ALLOW_PREVIEW_MIGRATION=1."
+    "This runner runs when CONTEXT=production (netlify.toml [context.production]) or, for deploy previews / branch deploys, only when the build command sets ALLOW_PREVIEW_MIGRATION=1."
   );
   process.exit(1);
 }
