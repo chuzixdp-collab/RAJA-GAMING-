@@ -45,6 +45,7 @@ type SupplierOrderInfo = {
   partnerOrderNumber: string;
   aluuOrderRef: string | null;
   providerOrderId: string | null;
+  fzrOrderId: string | null;
   gameCode: string;
   denom: string;
   userid: string;
@@ -188,20 +189,32 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
   }
 
   /**
-   * ALUU supplier actions. Submission is only possible for admin-APPROVED
-   * orders on ALUU-synced packages — the server enforces the same gates.
+   * Supplier actions (ALUU = backup, FazerCards = primary). Submission is
+   * only possible for orders with a verified payment on supplier-synced
+   * packages — the server enforces the same gates. The endpoint is chosen by
+   * the package's supplier source so the same paid order can only ever go to
+   * ONE supplier.
    */
+  const packageSupplier = detail?.package?.supplierSource ?? null;
   const canSubmitSupplier =
     !!detail &&
-    detail.package?.supplierSource === "ALUU" &&
-    (detail.status === "APPROVED" || detail.status === "PROCESSING") &&
+    (packageSupplier === "ALUU" || packageSupplier === "FAZERCARDS") &&
+    (packageSupplier === "FAZERCARDS"
+      ? ["PAYMENT_SUBMITTED", "APPROVED", "PROCESSING"].includes(detail.status)
+      : detail.status === "APPROVED" || detail.status === "PROCESSING") &&
     (!detail.supplierOrder ||
-      ["SUBMIT_FAILED", "ERROR", "CANCELLED"].includes(detail.supplierOrder.status));
+      (detail.supplierOrder.supplier === packageSupplier &&
+        ["SUBMIT_FAILED", "ERROR", "CANCELLED"].includes(detail.supplierOrder.status)));
 
   const canTrackSupplier =
     !!detail &&
     !!detail.supplierOrder &&
-    !["SUBMIT_FAILED"].includes(detail.supplierOrder.status);
+    detail.supplierOrder.status !== "SUBMIT_FAILED";
+
+  const supplierEndpoints =
+    packageSupplier === "FAZERCARDS"
+      ? { submit: "/api/admin/fazercards/submit", track: "/api/admin/fazercards/track" }
+      : { submit: "/api/admin/aluu/submit", track: "/api/admin/aluu/track" };
 
   async function submitToSupplier() {
     if (!detail) return;
@@ -212,13 +225,15 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
         failed?: boolean;
         error?: string;
         note?: string;
-      }>("/api/admin/aluu/submit", {
+      }>(supplierEndpoints.submit, {
         method: "POST",
         json: { orderId: detail.id },
       });
       patchLocal(detail.id, {
         supplierOrder: res.supplierOrder,
-        ...(detail.status === "APPROVED" && !res.failed ? { status: "PROCESSING" } : {}),
+        ...(["APPROVED", "PAYMENT_SUBMITTED"].includes(detail.status) && !res.failed
+          ? { status: "PROCESSING" }
+          : {}),
       });
       if (res.failed) {
         toast.error(`Supplier submit failed: ${res.error ?? "unknown reason"}`);
@@ -242,7 +257,7 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
         supplierStatus?: string;
         orderCompleted?: boolean;
         supplierOrder: SupplierOrderInfo;
-      }>("/api/admin/aluu/track", {
+      }>(supplierEndpoints.track, {
         method: "POST",
         json: { orderId: detail.id },
       });
@@ -456,12 +471,14 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
                 </section>
               </div>
 
-              {/* Supplier (ALUU) panel — only for synced packages */}
-              {(detail.package?.supplierSource === "ALUU" || detail.supplierOrder) && (
+              {/* Supplier panel — ALUU (backup) or FazerCards (primary) */}
+              {(detail.package?.supplierSource === "ALUU" ||
+                detail.package?.supplierSource === "FAZERCARDS" ||
+                detail.supplierOrder) && (
                 <section aria-label="Supplier delivery" className="rounded-md border border-border/70 p-3 text-sm">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="flex items-center gap-1.5 font-display text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <Zap className="h-3.5 w-3.5" aria-hidden="true" /> Supplier delivery (ALUU)
+                      <Zap className="h-3.5 w-3.5" aria-hidden="true" /> Supplier delivery ({detail.supplierOrder?.supplier ?? detail.package?.supplierSource})
                     </h3>
                     {detail.supplierOrder && (
                       <SupplierStatusBadge status={detail.supplierOrder.status} />
@@ -472,7 +489,7 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
                     <div className="grid gap-x-6 sm:grid-cols-2">
                       <DetailRow
                         label="Supplier ref"
-                        value={detail.supplierOrder.aluuOrderRef ?? "—"}
+                        value={detail.supplierOrder.aluuOrderRef ?? detail.supplierOrder.fzrOrderId ?? "—"}
                         mono
                       />
                       <DetailRow

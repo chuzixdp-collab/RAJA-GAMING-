@@ -389,6 +389,22 @@ export const settingsUpdateSchema = z.object(
     .trim()
     .regex(/^$|^[0-9]+(\.[0-9]+)?$/, "Enter a positive number.")
     .optional(),
+  /** FazerCards supplier integration settings (admin-only). */
+  FAZERCARDS_FF_CATEGORY_ID: z
+    .string()
+    .trim()
+    .max(120, "Category id is too long.")
+    .optional(),
+  FAZERCARDS_USD_TO_PKR: z
+    .string()
+    .trim()
+    .regex(/^$|^[0-9]+(\.[0-9]+)?$/, "Enter a positive number.")
+    .optional(),
+  FAZERCARDS_PRICE_MARKUP_PERCENT: z
+    .string()
+    .trim()
+    .regex(/^$|^[0-9]+(\.[0-9]+)?$/, "Enter a positive number.")
+    .optional(),
   ALUU_PRICE_MARKUP_PERCENT: z
     .string()
     .trim()

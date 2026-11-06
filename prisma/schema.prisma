@@ -240,6 +240,12 @@ model DiamondPackage {
   supplierPriceUsdCents Int?      // exact supplier price in USD cents at last sync
   supplierStock         String?   // supplier stockStatus, e.g. "in_stock"
   supplierSyncedAt      DateTime?
+  // Supplier sync (FazerCards — second supplier, additive). Reuses
+  // supplierPriceUsdCents / supplierSyncedAt above; supplierSource="FAZERCARDS".
+  supplierFzrCategoryId String?   // FazerCards top-up category_id (e.g. Free Fire)
+  supplierFzrOfferId    String?   // FazerCards offer_id within that category
+  supplierFzrOfferName  String?   // offer name at last sync
+  supplierFzrFields     Json?     // category fields[] spec (input keys for ordering)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -287,13 +293,19 @@ model SupplierOrder {
   id                 String     @id @default(cuid())
   topUpOrder         TopUpOrder @relation(fields: [topUpOrderId], references: [id], onDelete: Cascade)
   topUpOrderId       String     @unique
+  // "ALUU" | "FAZERCARDS" — which supplier this row was submitted to. The
+  // topUpOrderId @unique constraint means a customer order can EVER have only
+  // one supplier row, so the same paid order can never be sent to two
+  // suppliers.
   supplier           String     @default("ALUU")
-  // partner_orderid sent to the supplier — always the Raja Gaming
-  // orderNumber, so resubmits are idempotent (supplier answers 409 with the
-  // existing order instead of creating a second one).
+  // partner_orderid / Idempotency-Key sent to the supplier — always the Raja
+  // Gaming orderNumber, so resubmits are idempotent (ALUU answers 409 with
+  // the existing order; FazerCards returns the original order for the same
+  // Idempotency-Key) — a retry can never double-order or double-charge.
   partnerOrderNumber String     @unique
   aluuOrderRef       String?    // supplier reference, e.g. "API-XXXXXXXXX"
   providerOrderId    String?    // upstream provider order id from the supplier
+  fzrOrderId         String?    // FazerCards public order id, e.g. "ord-1"
   gameCode           String
   denom              String
   userid             String
@@ -324,6 +336,16 @@ model AluuWebhookEvent {
   createdAt   DateTime @default(now())
 
   @@index([orderNumber, createdAt])
+}
+
+// FazerCards webhook event deduplication. eventId = supplier event id from
+// the delivered payload (falling back to a hash of the raw body when the
+// payload carries no parseable id).
+model FazerWebhookEvent {
+  id        String   @id @default(cuid())
+  eventId   String   @unique
+  eventType String?
+  createdAt DateTime @default(now())
 }
 
 // ------------------------------------------------------------

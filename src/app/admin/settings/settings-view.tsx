@@ -80,6 +80,15 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    title: "Supplier (FazerCards)",
+    description: "Primary supplier pricing hints. The category itself is managed on the FazerCards supplier page.",
+    fields: [
+      { key: "FAZERCARDS_FF_CATEGORY_ID", label: "Free Fire category id", type: "text", hint: "Filled automatically when you sync a category from the FazerCards page." },
+      { key: "FAZERCARDS_USD_TO_PKR", label: "USD → PKR rate", type: "text", hint: "Used to suggest sale prices when syncing FazerCards offers. Defaults to 280." },
+      { key: "FAZERCARDS_PRICE_MARKUP_PERCENT", label: "Supplier price markup (%)", type: "text", hint: "Suggested margin added over the FazerCards price. 0 sells at cost." },
+    ],
+  },
+  {
     title: "Maintenance",
     description: "Emergency switch for taking the public site offline.",
     fields: [

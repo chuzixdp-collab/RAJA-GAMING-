@@ -29,6 +29,10 @@ export const SETTING_KEYS = [
   "ALUU_FF_GAMECODE",          // Free Fire game code resolved from /api/v.1/games
   "ALUU_USD_TO_PKR",           // suggested sale-price conversion rate (admin-editable)
   "ALUU_PRICE_MARKUP_PERCENT", // suggested margin over the supplier price (admin-editable)
+  // FazerCards supplier integration (admin-only, never public)
+  "FAZERCARDS_FF_CATEGORY_ID",  // Free Fire category_id from GET /api/v2/topups
+  "FAZERCARDS_USD_TO_PKR",      // suggested sale-price conversion rate (admin-editable)
+  "FAZERCARDS_PRICE_MARKUP_PERCENT", // suggested margin over the supplier price
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];

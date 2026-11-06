@@ -1,10 +1,10 @@
-
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { notify, notifyAdmins } from "@/lib/notifications";
 import { formatRs } from "@/lib/format";
+import { submitToFazercards } from "@/lib/fazercards-fulfill";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,6 +164,7 @@ export async function POST(req: Request) {
             totalAmount: true,
             status: true,
             paymentMethod: true,
+            package: { select: { supplierSource: true } },
           },
         });
 
@@ -198,6 +199,38 @@ export async function POST(req: Request) {
               body: `We received your payment for order ${order.orderNumber}. Our team will verify it shortly.`,
               link: "/dashboard/orders",
             });
+
+            // FazerCards auto-delivery: the payment is now VERIFIED by this
+            // HMAC-checked webhook (never by a frontend message), so
+            // FazerCards-synced packages are submitted immediately. ALUU and
+            // manual packages keep the existing admin-approval flow. All
+            // failure modes are contained: a failed submission leaves the
+            // order in PAYMENT_SUBMITTED for manual handling (never fails the
+            // webhook — the event is already recorded and deduplicated), and
+            // submission is idempotent (documented Idempotency-Key).
+            if (order.package?.supplierSource === "FAZERCARDS") {
+              try {
+                const result = await submitToFazercards(order.id, { via: "auto_webhook" });
+                if (result.ok) {
+                  console.info("FazerCards auto-submission succeeded", {
+                    orderNumber: order.orderNumber,
+                    fzrOrderId: result.fzrOrderId,
+                    status: result.status,
+                  });
+                } else {
+                  console.error("FazerCards auto-submission did not run", {
+                    orderNumber: order.orderNumber,
+                    reason: result.reason,
+                    error: result.error,
+                  });
+                }
+              } catch (submitError) {
+                console.error("FazerCards auto-submission threw", {
+                  orderNumber: order.orderNumber,
+                  error: submitError instanceof Error ? submitError.message : submitError,
+                });
+              }
+            }
           }
         }
       } catch (orderError) {

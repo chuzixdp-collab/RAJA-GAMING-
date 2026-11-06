@@ -8,6 +8,7 @@ import { creditWallet } from "@/lib/wallet";
 import { getSettingInt } from "@/lib/settings";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
+import { submitToFazercards } from "@/lib/fazercards-fulfill";
 import { humanizeStatus } from "@/app/admin/_components/order-transitions";
 
 export const runtime = "nodejs";
@@ -76,7 +77,10 @@ export const PATCH = withApi(async (req: Request) => {
 
   const order = await db.topUpOrder.findUnique({
     where: { id: input.orderId },
-    include: { user: { select: { id: true, email: true, name: true, referredById: true } } },
+    include: {
+      user: { select: { id: true, email: true, name: true, referredById: true } },
+      package: { select: { supplierSource: true } },
+    },
   });
   if (!order) throw new ApiError("Order not found.", 404);
 
@@ -145,6 +149,29 @@ export const PATCH = withApi(async (req: Request) => {
       body: `Your payment for ${order.packageTitle} was verified. Your order is now APPROVED and will be delivered shortly.`,
       link: "/dashboard/orders",
     });
+
+    // FazerCards auto-delivery: an admin just verified the payment (APPROVED),
+    // so FazerCards-synced packages are submitted immediately. ALUU and manual
+    // packages keep the existing manual Submit flow. Failures are contained
+    // and logged — the order stays APPROVED and submission can be retried
+    // from the orders page (documented Idempotency-Key makes retries safe).
+    if (order.package?.supplierSource === "FAZERCARDS") {
+      try {
+        const result = await submitToFazercards(order.id, { via: "auto_admin", actorId: admin.id });
+        if (!result.ok) {
+          console.error("FazerCards auto-submission did not run", {
+            orderNumber: order.orderNumber,
+            reason: result.reason,
+            error: result.error,
+          });
+        }
+      } catch (submitError) {
+        console.error("FazerCards auto-submission threw", {
+          orderNumber: order.orderNumber,
+          error: submitError instanceof Error ? submitError.message : submitError,
+        });
+      }
+    }
 
     return apiSuccess({ id: order.id, status: "APPROVED" });
   }
