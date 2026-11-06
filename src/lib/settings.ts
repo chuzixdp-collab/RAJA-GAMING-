@@ -25,6 +25,10 @@ export const SETTING_KEYS = [
   "REVIEWS_AUTO_APPROVE",
   "MAINTENANCE_MODE",
   "MAINTENANCE_MESSAGE",
+  // ALUU supplier integration (admin-only, never public)
+  "ALUU_FF_GAMECODE",          // Free Fire game code resolved from /api/v.1/games
+  "ALUU_USD_TO_PKR",           // suggested sale-price conversion rate (admin-editable)
+  "ALUU_PRICE_MARKUP_PERCENT", // suggested margin over the supplier price (admin-editable)
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];

@@ -1,55 +1,56 @@
+import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
+import { getAluuConfigPresence, aluuRequest } from "@/lib/aluu";
 
-import { NextResponse } from 'next/server';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/aluu/balance — ALUU wallet balance (ADMIN ONLY).
+ *
+ * Hardened for the signed (IP-free) supplier mode:
+ *  - Requires a logged-in admin; everyone else gets 401/403.
+ *  - Sends the signed request via the shared client (x-api-key +
+ *    X-Timestamp + X-Signature) instead of the old unsigned fetch.
+ *  - Reports credential PRESENCE as booleans only — key values are never
+ *    returned, logged, or embedded in error messages.
+ */
 export async function GET() {
   try {
-    const apiKey = process.env.ALUU_API_KEY;
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+    }
+    if (user.role !== "ADMIN") {
+      return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
+    }
 
-    if (!apiKey) {
+    const presence = getAluuConfigPresence();
+    if (!presence.apiKeySet || !presence.secretSet) {
       return NextResponse.json(
-        { success: false, error: 'ALUU_API_KEY is not configured' },
+        {
+          success: false,
+          error: "ALUU is not fully configured",
+          details: { apiKeySet: presence.apiKeySet, secretSet: presence.secretSet },
+        },
         { status: 500 }
       );
     }
 
-    const response = await fetch(
-      'https://aluu.in/api/v.1/balance',
-      {
-        method: 'GET',
-        headers: {
-          'x-api-key': apiKey,
-          Accept: 'application/json',
-        },
-        cache: 'no-store',
-        signal: AbortSignal.timeout(15000),
-      }
+    const { payload } = await aluuRequest<{ success?: boolean; data?: unknown }>(
+      "GET",
+      "/api/v.1/balance"
     );
 
-    const data = await response.json();
+    if (!payload?.success) {
+      return NextResponse.json(
+        { success: false, error: "ALUU balance check failed" },
+        { status: 502 }
+      );
+    }
 
-    if (!response.ok) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'ALUU balance check failed',
-      status: response.status,
-      details: {
-        message: data?.message ?? 'No error message returned',
-        code: data?.code ?? null,
-      },
-    },
-    { status: 502 }
-  );
-}
-
-    return NextResponse.json({
-      success: true,
-      data: data.data ?? null,
-    });
+    return NextResponse.json({ success: true, data: payload.data ?? null });
   } catch {
-    return NextResponse.json(
-      { success: false, error: 'Could not connect to ALUU' },
-      { status: 502 }
-    );
+    return NextResponse.json({ success: false, error: "Could not connect to ALUU" }, { status: 502 });
   }
 }

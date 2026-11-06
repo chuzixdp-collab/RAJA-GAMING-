@@ -232,6 +232,14 @@ model DiamondPackage {
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)
   orders      TopUpOrder[]
+  // Supplier sync (ALUU). All columns nullable — null means the package is
+  // manually managed exactly as before the supplier integration existed.
+  supplierSource        String?   // "ALUU" when synced from the supplier catalog
+  supplierGameCode      String?   // e.g. the Free Fire game code returned by /api/v.1/games
+  supplierPack          String?   // exact ALUU "Pack" value sent as denom when ordering
+  supplierPriceUsdCents Int?      // exact supplier price in USD cents at last sync
+  supplierStock         String?   // supplier stockStatus, e.g. "in_stock"
+  supplierSyncedAt      DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -261,11 +269,61 @@ model TopUpOrder {
   adminNotes          String?
   reviewedById        String?
   completedAt         DateTime?
+  supplierOrder       SupplierOrder?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
   @@index([userId, status])
   @@index([status, createdAt])
+}
+
+// ------------------------------------------------------------
+// Supplier integration (ALUU — Free Fire auto-delivery)
+// ------------------------------------------------------------
+
+// One row per supplier submission. Created only AFTER payment is confirmed
+// and an admin approves the order — never automatically on checkout.
+model SupplierOrder {
+  id                 String     @id @default(cuid())
+  topUpOrder         TopUpOrder @relation(fields: [topUpOrderId], references: [id], onDelete: Cascade)
+  topUpOrderId       String     @unique
+  supplier           String     @default("ALUU")
+  // partner_orderid sent to the supplier — always the Raja Gaming
+  // orderNumber, so resubmits are idempotent (supplier answers 409 with the
+  // existing order instead of creating a second one).
+  partnerOrderNumber String     @unique
+  aluuOrderRef       String?    // supplier reference, e.g. "API-XXXXXXXXX"
+  providerOrderId    String?    // upstream provider order id from the supplier
+  gameCode           String
+  denom              String
+  userid             String
+  amountUsdCents     Int?
+  // Local mirror of the supplier status:
+  //   PENDING | SUCCESSFUL | ERROR | CANCELLED | UNKNOWN (from supplier)
+  //   SUBMIT_FAILED (local only — the create call failed, safe to retry)
+  // TopUpOrder.COMPLETED is set ONLY when the supplier reports "successful".
+  status             String     @default("PENDING")
+  statusMessage      String?
+  rawResponse        Json?
+  submittedById      String?
+  submittedAt        DateTime   @default(now())
+  lastStatusAt       DateTime?
+  webhookAt          DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+// ALUU webhook event deduplication (mirrors CryptoEzeWebhookEvent).
+// id = `${orderid}:${status}:${updatedAt}` from the supplier payload.
+model AluuWebhookEvent {
+  id          String   @id
+  orderNumber String?
+  processedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([orderNumber, createdAt])
 }
 
 // ------------------------------------------------------------

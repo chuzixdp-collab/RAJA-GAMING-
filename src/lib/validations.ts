@@ -377,7 +377,24 @@ export const settingsUpdateSchema = z.object(
       "REVIEWS_AUTO_APPROVE", "MAINTENANCE_MODE", "MAINTENANCE_MESSAGE",
     ].map((k) => [k, z.string().max(5000).optional()])
   ) as Record<string, z.ZodOptional<z.ZodString>>
-);
+).extend({
+  /** ALUU supplier integration settings (admin-only). */
+  ALUU_FF_GAMECODE: z
+    .string()
+    .trim()
+    .regex(/^$|^[a-zA-Z0-9_-]{1,40}$/, "Invalid game code.")
+    .optional(),
+  ALUU_USD_TO_PKR: z
+    .string()
+    .trim()
+    .regex(/^$|^[0-9]+(\.[0-9]+)?$/, "Enter a positive number.")
+    .optional(),
+  ALUU_PRICE_MARKUP_PERCENT: z
+    .string()
+    .trim()
+    .regex(/^$|^[0-9]+(\.[0-9]+)?$/, "Enter a positive number.")
+    .optional(),
+});
 
 export const reviewModerationSchema = z.object({
   reviewId: cuidLike,

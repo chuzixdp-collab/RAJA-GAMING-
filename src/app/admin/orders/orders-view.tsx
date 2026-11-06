@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OrderStatus } from "@prisma/client";
-import { Loader2, Receipt, Search, StickyNote } from "lucide-react";
+import { Loader2, Receipt, Search, StickyNote, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/client";
 import { formatDateTime, formatRs, timeAgo } from "@/lib/format";
@@ -39,13 +39,37 @@ import {
   type OrderAction,
 } from "@/app/admin/_components/order-transitions";
 
+type SupplierOrderInfo = {
+  id: string;
+  supplier: string;
+  partnerOrderNumber: string;
+  aluuOrderRef: string | null;
+  providerOrderId: string | null;
+  gameCode: string;
+  denom: string;
+  userid: string;
+  amountUsdCents: number | null;
+  status: string;
+  statusMessage: string | null;
+  submittedAt: string;
+  lastStatusAt: string | null;
+  webhookAt: string | null;
+};
+
 type AdminOrder = {
   id: string;
   orderNumber: string;
   userId: string;
   packageId: string;
   packageTitle: string;
-  package: { title: string };
+  package: {
+    title: string;
+    supplierSource: string | null;
+    supplierGameCode: string | null;
+    supplierPack: string | null;
+    supplierStock: string | null;
+  };
+  supplierOrder: SupplierOrderInfo | null;
   diamonds: number;
   amount: number;
   couponCode: string | null;
@@ -160,6 +184,81 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
       toast.error(e instanceof Error ? e.message : "Could not save notes.");
     } finally {
       setSavingNotes(false);
+    }
+  }
+
+  /**
+   * ALUU supplier actions. Submission is only possible for admin-APPROVED
+   * orders on ALUU-synced packages — the server enforces the same gates.
+   */
+  const canSubmitSupplier =
+    !!detail &&
+    detail.package?.supplierSource === "ALUU" &&
+    (detail.status === "APPROVED" || detail.status === "PROCESSING") &&
+    (!detail.supplierOrder ||
+      ["SUBMIT_FAILED", "ERROR", "CANCELLED"].includes(detail.supplierOrder.status));
+
+  const canTrackSupplier =
+    !!detail &&
+    !!detail.supplierOrder &&
+    !["SUBMIT_FAILED"].includes(detail.supplierOrder.status);
+
+  async function submitToSupplier() {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      const res = await apiFetch<{
+        supplierOrder: SupplierOrderInfo;
+        failed?: boolean;
+        error?: string;
+        note?: string;
+      }>("/api/admin/aluu/submit", {
+        method: "POST",
+        json: { orderId: detail.id },
+      });
+      patchLocal(detail.id, {
+        supplierOrder: res.supplierOrder,
+        ...(detail.status === "APPROVED" && !res.failed ? { status: "PROCESSING" } : {}),
+      });
+      if (res.failed) {
+        toast.error(`Supplier submit failed: ${res.error ?? "unknown reason"}`);
+      } else {
+        toast.success(
+          res.note ?? `Sent to ${res.supplierOrder.supplier} — status ${res.supplierOrder.status}`
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Supplier submit failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function trackSupplier() {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      const res = await apiFetch<{
+        supplierStatus?: string;
+        orderCompleted?: boolean;
+        supplierOrder: SupplierOrderInfo;
+      }>("/api/admin/aluu/track", {
+        method: "POST",
+        json: { orderId: detail.id },
+      });
+      patchLocal(detail.id, {
+        supplierOrder: res.supplierOrder,
+        ...(res.orderCompleted ? { status: "COMPLETED" } : {}),
+      });
+      toast.success(
+        res.orderCompleted
+          ? "Supplier confirmed delivery — order marked COMPLETED."
+          : `Supplier status: ${res.supplierStatus ?? "unknown"}`
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not track supplier status.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -357,6 +456,84 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
                 </section>
               </div>
 
+              {/* Supplier (ALUU) panel — only for synced packages */}
+              {(detail.package?.supplierSource === "ALUU" || detail.supplierOrder) && (
+                <section aria-label="Supplier delivery" className="rounded-md border border-border/70 p-3 text-sm">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-1.5 font-display text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Zap className="h-3.5 w-3.5" aria-hidden="true" /> Supplier delivery (ALUU)
+                    </h3>
+                    {detail.supplierOrder && (
+                      <SupplierStatusBadge status={detail.supplierOrder.status} />
+                    )}
+                  </div>
+
+                  {detail.supplierOrder ? (
+                    <div className="grid gap-x-6 sm:grid-cols-2">
+                      <DetailRow
+                        label="Supplier ref"
+                        value={detail.supplierOrder.aluuOrderRef ?? "—"}
+                        mono
+                      />
+                      <DetailRow
+                        label="Partner order id"
+                        value={detail.supplierOrder.partnerOrderNumber}
+                        mono
+                      />
+                      <DetailRow label="Game / denom" value={`${detail.supplierOrder.gameCode} · ${detail.supplierOrder.denom}`} mono />
+                      <DetailRow
+                        label="Supplier charge"
+                        value={
+                          detail.supplierOrder.amountUsdCents !== null
+                            ? `$${(detail.supplierOrder.amountUsdCents / 100).toFixed(3)}`
+                            : "—"
+                        }
+                      />
+                      <DetailRow label="Submitted" value={formatDateTime(detail.supplierOrder.submittedAt)} />
+                      <DetailRow
+                        label="Last status"
+                        value={
+                          detail.supplierOrder.lastStatusAt
+                            ? formatDateTime(detail.supplierOrder.lastStatusAt)
+                            : "—"
+                        }
+                      />
+                      {detail.supplierOrder.statusMessage && (
+                        <div className="sm:col-span-2 py-1">
+                          <span className="text-muted-foreground">Supplier message: </span>
+                          <span className="break-words">{detail.supplierOrder.statusMessage}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Not sent to the supplier yet. Approve the payment, then submit for automatic delivery to the
+                      player's Free Fire UID.
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {canSubmitSupplier && (
+                      <Button size="sm" onClick={() => void submitToSupplier()} disabled={busy}>
+                        {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                        {detail.supplierOrder ? "Retry supplier submit" : "Submit to ALUU"}
+                      </Button>
+                    )}
+                    {canTrackSupplier && (
+                      <Button size="sm" variant="outline" onClick={() => void trackSupplier()} disabled={busy}>
+                        {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                        Track supplier status
+                      </Button>
+                    )}
+                  </div>
+                  {detail.status === "PAYMENT_SUBMITTED" && detail.package?.supplierSource === "ALUU" && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Approve the payment first — supplier orders are placed only after admin approval.
+                    </p>
+                  )}
+                </section>
+              )}
+
               {actionsForDetail.length > 0 && (
                 <div>
                   <Separator className="my-1" />
@@ -420,6 +597,24 @@ export function OrdersView({ initialStatus = "ALL" }: { initialStatus?: string }
         }}
       />
     </div>
+  );
+}
+
+function SupplierStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    PENDING: "bg-amber-500/15 text-amber-500 border-amber-500/30",
+    SUCCESSFUL: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30",
+    ERROR: "bg-red-500/15 text-red-500 border-red-500/30",
+    CANCELLED: "bg-red-500/15 text-red-500 border-red-500/30",
+    SUBMIT_FAILED: "bg-orange-500/15 text-orange-500 border-orange-500/30",
+    UNKNOWN: "bg-muted text-muted-foreground border-border",
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${styles[status] ?? styles.UNKNOWN}`}
+    >
+      {status === "SUCCESSFUL" ? "delivered by supplier" : status.replaceAll("_", " ").toLowerCase()}
+    </span>
   );
 }
 

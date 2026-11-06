@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Bell, Contact, FileQuestion, Gavel, LayoutDashboard, Menu, MessageSquareQuote,
   Package, Receipt, Settings, ShieldCheck, ShoppingBag, Star, TicketPercent,
-  Trophy, Users, Wallet, ScrollText,
+  Trophy, Users, Wallet, ScrollText, Zap,
 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/admin/packages", label: "Diamond Packages", icon: Package },
   { href: "/admin/orders", label: "Orders", icon: Receipt },
   { href: "/admin/payments", label: "Payments", icon: ShoppingBag },
+  { href: "/admin/supplier", label: "Supplier (ALUU)", icon: Zap },
   { href: "/admin/tournaments", label: "Tournaments", icon: Trophy },
   { href: "/admin/marketplace", label: "Marketplace", icon: Gavel },
   { href: "/admin/transactions", label: "ID Transactions", icon: ShieldCheck },
