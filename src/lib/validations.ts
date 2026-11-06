@@ -3,6 +3,7 @@
  * NOTE: zod v4.
  */
 import { z } from "zod";
+import { isValidTheme } from "@/lib/theme";
 
 const cuidLike = z.string().min(1).max(64);
 
@@ -393,6 +394,11 @@ export const settingsUpdateSchema = z.object(
     .string()
     .trim()
     .regex(/^$|^[0-9]+(\.[0-9]+)?$/, "Enter a positive number.")
+    .optional(),
+  /** Admin-controlled global theme. Must be one of the registered theme ids. */
+  SITE_THEME: z
+    .string()
+    .refine(isValidTheme, { message: "Unknown theme." })
     .optional(),
 });
 

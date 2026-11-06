@@ -46,8 +46,20 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* RAJA GAMING — dark-only "midnight & gold" theme */
-:root {
+/* ============================================================
+   RAJA GAMING — 5 admin-controlled themes (dark esports look).
+
+   The active theme is applied as `data-theme` on <html> by the
+   root layout (value persisted in SiteSetting "SITE_THEME").
+   `:root` doubles as the royal-gold palette so any surface that
+   renders without the attribute (e.g. prerendered error pages)
+   still gets the classic look. Every colour below is theme-scoped —
+   backgrounds, cards, buttons, borders, text accents, navigation,
+   dashboards, mobile layouts and scrollbars all follow automatically.
+   ============================================================ */
+
+:root,
+[data-theme="royal-gold"] {
   --radius: 0.75rem;
   --background: #09090b;
   --foreground: #f4f4f5;
@@ -84,12 +96,228 @@
   --sidebar-accent-foreground: #f5b90b;
   --sidebar-border: rgba(255, 255, 255, 0.08);
   --sidebar-ring: #f5b90b;
+  /* theme helpers */
+  --accent-rgb: 245, 185, 11;
+  --gold-grad-1: #f7d774;
+  --gold-grad-2: #f5b90b;
+  --gold-grad-3: #d99a00;
+  --bg-glow-1: rgba(245, 185, 11, 0.07);
+  --bg-glow-2: rgba(229, 72, 77, 0.05);
+  --glow-a: rgba(245, 185, 11, 0.16);
+  --glow-b: rgba(245, 185, 11, 0.09);
+  --glow-c: rgba(217, 154, 0, 0.07);
+  --selection-bg: rgba(245, 185, 11, 0.35);
+  --scrollbar-thumb: rgba(245, 185, 11, 0.28);
+  --scrollbar-thumb-hover: rgba(245, 185, 11, 0.5);
+  --logo-panel: #0b0b0e;
 }
 
-.dark {
-  --background: #09090b;
-  --foreground: #f4f4f5;
+[data-theme="blood-red"] {
+  --background: #0a0a0b;
+  --foreground: #f5f5f6;
+  --card: #121113;
+  --card-foreground: #f5f5f6;
+  --popover: #161517;
+  --popover-foreground: #f5f5f6;
+  --primary: #ff3b46;
+  --primary-foreground: #1c0505;
+  --secondary: #ff6b4a;
+  --secondary-foreground: #ffffff;
+  --muted: #1a191b;
+  --muted-foreground: #a1a1aa;
+  --accent: #211113;
+  --accent-foreground: #ff6b6b;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.09);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #ff3b46;
+  --gold: #ff5c64;
+  --gold-soft: rgba(255, 59, 70, 0.14);
+  --blood: #e5484d;
+  --chart-1: #ff3b46;
+  --chart-2: #ff6b4a;
+  --chart-3: #ff8f8f;
+  --chart-4: #b3121e;
+  --chart-5: #71717a;
+  --sidebar: #0c0c0e;
+  --sidebar-foreground: #f5f5f6;
+  --sidebar-primary: #ff3b46;
+  --sidebar-primary-foreground: #1c0505;
+  --sidebar-accent: #1e1416;
+  --sidebar-accent-foreground: #ff6b6b;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #ff3b46;
+  --accent-rgb: 255, 59, 70;
+  --gold-grad-1: #ffb3ae;
+  --gold-grad-2: #ff3b46;
+  --gold-grad-3: #b3121e;
+  --bg-glow-1: rgba(255, 59, 70, 0.08);
+  --bg-glow-2: rgba(255, 107, 74, 0.05);
+  --glow-a: rgba(255, 59, 70, 0.17);
+  --glow-b: rgba(255, 59, 70, 0.1);
+  --glow-c: rgba(179, 18, 30, 0.08);
+  --selection-bg: rgba(255, 59, 70, 0.35);
+  --scrollbar-thumb: rgba(255, 59, 70, 0.3);
+  --scrollbar-thumb-hover: rgba(255, 59, 70, 0.52);
+  --logo-panel: #0d0a0b;
 }
+
+[data-theme="neon-purple"] {
+  --background: #0e0a1a;
+  --foreground: #f3efff;
+  --card: #171028;
+  --card-foreground: #f3efff;
+  --popover: #1b1432;
+  --popover-foreground: #f3efff;
+  --primary: #a855f7;
+  --primary-foreground: #17082b;
+  --secondary: #ec4899;
+  --secondary-foreground: #ffffff;
+  --muted: #1c1630;
+  --muted-foreground: #a89ec4;
+  --accent: #241a3e;
+  --accent-foreground: #c084fc;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #a855f7;
+  --gold: #c084fc;
+  --gold-soft: rgba(168, 85, 247, 0.15);
+  --blood: #e5484d;
+  --chart-1: #a855f7;
+  --chart-2: #ec4899;
+  --chart-3: #c084fc;
+  --chart-4: #6d28d9;
+  --chart-5: #71717a;
+  --sidebar: #120d22;
+  --sidebar-foreground: #f3efff;
+  --sidebar-primary: #a855f7;
+  --sidebar-primary-foreground: #17082b;
+  --sidebar-accent: #1f1638;
+  --sidebar-accent-foreground: #c084fc;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: #a855f7;
+  --accent-rgb: 168, 85, 247;
+  --gold-grad-1: #e9d5ff;
+  --gold-grad-2: #a855f7;
+  --gold-grad-3: #6d28d9;
+  --bg-glow-1: rgba(168, 85, 247, 0.09);
+  --bg-glow-2: rgba(236, 72, 153, 0.05);
+  --glow-a: rgba(168, 85, 247, 0.18);
+  --glow-b: rgba(168, 85, 247, 0.1);
+  --glow-c: rgba(109, 40, 217, 0.09);
+  --selection-bg: rgba(168, 85, 247, 0.35);
+  --scrollbar-thumb: rgba(168, 85, 247, 0.32);
+  --scrollbar-thumb-hover: rgba(168, 85, 247, 0.55);
+  --logo-panel: #100b1d;
+}
+
+[data-theme="ice-blue"] {
+  --background: #050d1a;
+  --foreground: #eaf4ff;
+  --card: #0a1626;
+  --card-foreground: #eaf4ff;
+  --popover: #0d1c30;
+  --popover-foreground: #eaf4ff;
+  --primary: #38bdf8;
+  --primary-foreground: #031320;
+  --secondary: #22d3ee;
+  --secondary-foreground: #02222b;
+  --muted: #101f38;
+  --muted-foreground: #8fa8c4;
+  --accent: #13263f;
+  --accent-foreground: #7dd3fc;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #38bdf8;
+  --gold: #7dd3fc;
+  --gold-soft: rgba(56, 189, 248, 0.14);
+  --blood: #e5484d;
+  --chart-1: #38bdf8;
+  --chart-2: #22d3ee;
+  --chart-3: #7dd3fc;
+  --chart-4: #0369a1;
+  --chart-5: #64748b;
+  --sidebar: #071120;
+  --sidebar-foreground: #eaf4ff;
+  --sidebar-primary: #38bdf8;
+  --sidebar-primary-foreground: #031320;
+  --sidebar-accent: #0f2138;
+  --sidebar-accent-foreground: #7dd3fc;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: #38bdf8;
+  --accent-rgb: 56, 189, 248;
+  --gold-grad-1: #bae6fd;
+  --gold-grad-2: #38bdf8;
+  --gold-grad-3: #0369a1;
+  --bg-glow-1: rgba(56, 189, 248, 0.08);
+  --bg-glow-2: rgba(34, 211, 238, 0.05);
+  --glow-a: rgba(56, 189, 248, 0.16);
+  --glow-b: rgba(56, 189, 248, 0.09);
+  --glow-c: rgba(3, 105, 161, 0.1);
+  --selection-bg: rgba(56, 189, 248, 0.35);
+  --scrollbar-thumb: rgba(56, 189, 248, 0.3);
+  --scrollbar-thumb-hover: rgba(56, 189, 248, 0.52);
+  --logo-panel: #061020;
+}
+
+[data-theme="dark-shadow"] {
+  --background: #0b0b0d;
+  --foreground: #e8e8ea;
+  --card: #121215;
+  --card-foreground: #e8e8ea;
+  --popover: #151518;
+  --popover-foreground: #e8e8ea;
+  --primary: #c8c8d0;
+  --primary-foreground: #0f0f11;
+  --secondary: #8b8b94;
+  --secondary-foreground: #0f0f11;
+  --muted: #17171a;
+  --muted-foreground: #9d9da6;
+  --accent: #1d1d21;
+  --accent-foreground: #d4d4d8;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.13);
+  --ring: #a1a1aa;
+  --gold: #d4d4d8;
+  --gold-soft: rgba(200, 200, 208, 0.12);
+  --blood: #e5484d;
+  --chart-1: #c8c8d0;
+  --chart-2: #8b8b94;
+  --chart-3: #e4e4e7;
+  --chart-4: #52525b;
+  --chart-5: #71717a;
+  --sidebar: #0e0e10;
+  --sidebar-foreground: #e8e8ea;
+  --sidebar-primary: #c8c8d0;
+  --sidebar-primary-foreground: #0f0f11;
+  --sidebar-accent: #19191d;
+  --sidebar-accent-foreground: #d4d4d8;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: #a1a1aa;
+  --accent-rgb: 200, 200, 208;
+  --gold-grad-1: #f4f4f5;
+  --gold-grad-2: #c8c8d0;
+  --gold-grad-3: #8b8b94;
+  --bg-glow-1: rgba(255, 255, 255, 0.04);
+  --bg-glow-2: rgba(139, 139, 148, 0.05);
+  --glow-a: rgba(255, 255, 255, 0.08);
+  --glow-b: rgba(255, 255, 255, 0.05);
+  --glow-c: rgba(139, 139, 148, 0.07);
+  --selection-bg: rgba(200, 200, 208, 0.3);
+  --scrollbar-thumb: rgba(200, 200, 208, 0.26);
+  --scrollbar-thumb-hover: rgba(200, 200, 208, 0.46);
+  --logo-panel: #0d0d0f;
+}
+
+/* The .dark class stays on <html> for dark: variants; all palette
+   variables are owned by the theme blocks above, so no overrides here. */
 
 @layer base {
   * {
@@ -101,19 +329,19 @@
   body {
     @apply bg-background text-foreground antialiased;
     background-image:
-      radial-gradient(1100px 480px at 85% -10%, rgba(245, 185, 11, 0.07), transparent 60%),
-      radial-gradient(900px 420px at -10% 0%, rgba(229, 72, 77, 0.05), transparent 55%);
+      radial-gradient(1100px 480px at 85% -10%, var(--bg-glow-1), transparent 60%),
+      radial-gradient(900px 420px at -10% 0%, var(--bg-glow-2), transparent 55%);
     background-attachment: fixed;
   }
   ::selection {
-    background: rgba(245, 185, 11, 0.35);
+    background: var(--selection-bg);
   }
 }
 
-/* Custom scrollbar (dark, subtle gold thumb) */
+/* Custom scrollbar (theme-tinted, subtle) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(245, 185, 11, 0.35) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
@@ -123,11 +351,11 @@
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(245, 185, 11, 0.28);
+  background: var(--scrollbar-thumb);
   border-radius: 8px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(245, 185, 11, 0.5);
+  background: var(--scrollbar-thumb-hover);
 }
 
 @utility font-display {
@@ -135,8 +363,9 @@
   letter-spacing: 0.01em;
 }
 
+/* Brand headline gradient — colours follow the active theme. */
 @utility text-gold-gradient {
-  background: linear-gradient(100deg, #f7d774 0%, #f5b90b 45%, #d99a00 100%);
+  background: linear-gradient(100deg, var(--gold-grad-1) 0%, var(--gold-grad-2) 45%, var(--gold-grad-3) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -152,17 +381,48 @@
   transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
 }
 @utility card-glow-hover {
-  border-color: rgba(245, 185, 11, 0.45);
-  box-shadow: 0 0 0 1px rgba(245, 185, 11, 0.25), 0 12px 40px -18px rgba(245, 185, 11, 0.35);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.25), 0 12px 40px -18px rgba(var(--accent-rgb), 0.35);
 }
 
 @utility badge-outline-gold {
-  border: 1px solid rgba(245, 185, 11, 0.4);
-  background: rgba(245, 185, 11, 0.1);
-  color: #f7d774;
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--gold-grad-1);
 }
 
 @utility section-pad {
   padding-top: 3.5rem;
   padding-bottom: 3.5rem;
+}
+
+/* Loading screen (root loading.tsx) */
+@keyframes rg-load-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+@keyframes rg-load-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.rg-load-bar {
+  animation: rg-load-bar 1.15s ease-in-out infinite;
+}
+.rg-load-pulse {
+  animation: rg-load-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rg-load-bar,
+  .rg-load-pulse {
+    animation: none;
+  }
 }
