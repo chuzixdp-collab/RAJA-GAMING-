@@ -3,6 +3,11 @@ import { Geist, Rajdhani } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "@/components/providers/session-provider";
+import { getSiteTheme } from "@/lib/settings";
+
+// Theme is resolved per request (SiteSetting, 30s in-memory cache) so an
+// admin theme change is visible to every visitor on their next page view.
+export const dynamic = "force-dynamic";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -67,13 +72,14 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const theme = await getSiteTheme();
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" data-theme={theme} className="dark" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${rajdhani.variable} font-sans min-h-screen`}>
         <SessionProvider>
           {children}

@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell, Coins, Gamepad2, LayoutDashboard, Menu, Receipt, Settings, Star, Store, TicketPercent, Trophy, Users, Wallet,
+  Bell, Coins, LayoutDashboard, Menu, Receipt, Settings, Star, Store, TicketPercent, Trophy, Users, Wallet,
 } from "lucide-react";
-import { Logo } from "@/components/brand/logo";
+import { Logo, LogoMark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -70,7 +70,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           {/* Mobile top bar */}
           <div className="mb-4 flex items-center justify-between lg:hidden">
             <Link href="/dashboard" className="flex items-center gap-2 font-display font-bold">
-              <Gamepad2 className="h-5 w-5 text-primary" /> Player Panel
+              <LogoMark size={26} /> Player Panel
             </Link>
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
