@@ -8,6 +8,7 @@ import { creditWallet } from "@/lib/wallet";
 import { getSettingInt } from "@/lib/settings";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
+import { submitOrderToAluu } from "@/lib/aluu-submit";
 import { humanizeStatus } from "@/app/admin/_components/order-transitions";
 
 export const runtime = "nodejs";
@@ -76,7 +77,10 @@ export const PATCH = withApi(async (req: Request) => {
 
   const order = await db.topUpOrder.findUnique({
     where: { id: input.orderId },
-    include: { user: { select: { id: true, email: true, name: true, referredById: true } } },
+    include: {
+      user: { select: { id: true, email: true, name: true, referredById: true } },
+      package: { select: { supplierSource: true } },
+    },
   });
   if (!order) throw new ApiError("Order not found.", 404);
 
@@ -145,6 +149,28 @@ export const PATCH = withApi(async (req: Request) => {
       body: `Your payment for ${order.packageTitle} was verified. Your order is now APPROVED and will be delivered shortly.`,
       link: "/dashboard/orders",
     });
+
+    // ALUU automatic fulfillment: the admin just VERIFIED the payment
+    // (APPROVED), so ALUU-synced packages are submitted to the supplier
+    // immediately — no second click needed. Failures are contained and
+    // notified: the order stays APPROVED and submission can be retried from
+    // the orders page (idempotent partner_orderid, UNIQUE supplier row).
+    if (order.package?.supplierSource === "ALUU") {
+      try {
+        const result = await submitOrderToAluu(order.id, { via: "auto_admin", actor: admin });
+        if (!result.ok) {
+          console.error("ALUU auto-submission did not run", {
+            orderNumber: order.orderNumber,
+            reason: result.code,
+          });
+        }
+      } catch (submitError) {
+        console.error("ALUU auto-submission threw", {
+          orderNumber: order.orderNumber,
+          error: submitError instanceof Error ? submitError.message : submitError,
+        });
+      }
+    }
 
     return apiSuccess({ id: order.id, status: "APPROVED" });
   }

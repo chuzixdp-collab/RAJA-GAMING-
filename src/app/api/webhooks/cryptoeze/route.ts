@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { notify, notifyAdmins } from "@/lib/notifications";
 import { formatRs } from "@/lib/format";
+import { submitOrderToAluu } from "@/lib/aluu-submit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,9 +151,14 @@ export async function POST(req: Request) {
 
     // Act only on CryptoEze's documented PKR events (payment.paid /
     // payment.failed / payment.refunded). A paid order moves to
-    // PAYMENT_SUBMITTED so it enters the EXISTING manual admin verification
-    // queue — identical to a manual EasyPaisa submission. Approval, wallet
-    // credit and diamond delivery stay manual admin actions.
+    // PAYMENT_SUBMITTED. Manual/EasyPaisa-style verification still applies
+    // to manually managed packages — but ALUU-synced packages are delivered
+    // AUTOMATICALLY: the HMAC signature above already cryptographically
+    // verified this payment, which is exactly the "payment-verified
+    // automatic order creation" trust point. Submission goes through the
+    // same gated, idempotent core as the admin route; a failed submission
+    // never fails this webhook (the event is already recorded + deduplicated)
+    // and never touches the paid order's state — admins can retry manually.
     if (payload.type === "payment.paid") {
       try {
         const order = await db.topUpOrder.findFirst({
@@ -164,6 +170,7 @@ export async function POST(req: Request) {
             totalAmount: true,
             status: true,
             paymentMethod: true,
+            package: { select: { supplierSource: true } },
           },
         });
 
@@ -198,6 +205,32 @@ export async function POST(req: Request) {
               body: `We received your payment for order ${order.orderNumber}. Our team will verify it shortly.`,
               link: "/dashboard/orders",
             });
+
+            // ALUU automatic fulfillment — this webhook just VERIFIED the
+            // payment (signature over the raw body), so ALUU-synced packages
+            // are submitted to the supplier immediately. Everything else
+            // (manual packages) keeps the existing admin verification queue.
+            if (order.package?.supplierSource === "ALUU") {
+              try {
+                const result = await submitOrderToAluu(order.id, { via: "auto_webhook" });
+                if (result.ok) {
+                  console.info("ALUU auto-submission after CryptoEze payment", {
+                    orderNumber: order.orderNumber,
+                    kind: result.kind,
+                  });
+                } else {
+                  console.error("ALUU auto-submission did not run", {
+                    orderNumber: order.orderNumber,
+                    reason: result.code,
+                  });
+                }
+              } catch (submitError) {
+                console.error("ALUU auto-submission threw", {
+                  orderNumber: order.orderNumber,
+                  error: submitError instanceof Error ? submitError.message : submitError,
+                });
+              }
+            }
           }
         }
       } catch (orderError) {

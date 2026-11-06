@@ -32,6 +32,14 @@ import {
   aluuRequest,
   ALUU_WEBHOOK_TOLERANCE_SECONDS,
 } from "../src/lib/aluu";
+import {
+  paymentVerifiedForSubmit,
+  nextOrderStatusAfterSubmit,
+} from "../src/lib/aluu-submit";
+import {
+  parseGameCheckResponse,
+  gameCheckHttpNote,
+} from "../src/lib/aluu-validate";
 
 // ---------------------------------------------------------------------------
 // 1. Signed request construction — verified against the documented layout:
@@ -257,5 +265,118 @@ describe("isHttpsWebhookUrl", () => {
     assert.equal(isHttpsWebhookUrl("https://localhost/api/webhooks/aluu"), false);
     assert.equal(isHttpsWebhookUrl("https://127.0.0.1/api/webhooks/aluu"), false);
     assert.equal(isHttpsWebhookUrl("not a url"), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Payment-verified auto-order gates (payment-verified automatic creation)
+//    PAYMENT_SUBMITTED is only trustworthy for the HMAC-verified webhook.
+// ---------------------------------------------------------------------------
+describe("paymentVerifiedForSubmit", () => {
+  test("webhook path accepts the webhook-verified + admin-approved statuses", () => {
+    assert.equal(paymentVerifiedForSubmit("PAYMENT_SUBMITTED", "auto_webhook"), true);
+    assert.equal(paymentVerifiedForSubmit("APPROVED", "auto_webhook"), true);
+    assert.equal(paymentVerifiedForSubmit("PROCESSING", "auto_webhook"), true);
+  });
+
+  test("admin paths require an admin-verified payment", () => {
+    assert.equal(paymentVerifiedForSubmit("APPROVED", "admin"), true);
+    assert.equal(paymentVerifiedForSubmit("PROCESSING", "auto_admin"), true);
+    // PAYMENT_SUBMITTED alone is NOT enough for admin-initiated submits.
+    assert.equal(paymentVerifiedForSubmit("PAYMENT_SUBMITTED", "admin"), false);
+    assert.equal(paymentVerifiedForSubmit("PAYMENT_SUBMITTED", "auto_admin"), false);
+  });
+
+  test("unpaid / terminal statuses never pass", () => {
+    for (const via of ["admin", "auto_webhook", "auto_admin"] as const) {
+      assert.equal(paymentVerifiedForSubmit("PENDING_PAYMENT", via), false);
+      assert.equal(paymentVerifiedForSubmit("UNDER_REVIEW", via), false);
+      assert.equal(paymentVerifiedForSubmit("COMPLETED", via), false);
+      assert.equal(paymentVerifiedForSubmit("REJECTED", via), false);
+      assert.equal(paymentVerifiedForSubmit("CANCELLED", via), false);
+      assert.equal(paymentVerifiedForSubmit("", via), false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. Order status movement after a supplier accepted the create call
+// ---------------------------------------------------------------------------
+describe("nextOrderStatusAfterSubmit", () => {
+  test("freshly-verified orders move to PROCESSING", () => {
+    assert.equal(nextOrderStatusAfterSubmit("PAYMENT_SUBMITTED"), "PROCESSING");
+    assert.equal(nextOrderStatusAfterSubmit("APPROVED"), "PROCESSING");
+  });
+
+  test("already-processing / terminal orders keep their status", () => {
+    assert.equal(nextOrderStatusAfterSubmit("PROCESSING"), null);
+    assert.equal(nextOrderStatusAfterSubmit("COMPLETED"), null);
+    assert.equal(nextOrderStatusAfterSubmit("REJECTED"), null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. Name Check (player ID validation) response normalization — per the
+//     documented /api/check/game-check behaviors (HTTP 200 even for unknown
+//     players; field set varies per game).
+// ---------------------------------------------------------------------------
+describe("parseGameCheckResponse", () => {
+  test("valid player — valid-flag shape", () => {
+    const r = parseGameCheckResponse({
+      valid: "valid",
+      name: "PlayerName",
+      nickname: "PlayerName",
+      fullname: "PlayerName",
+      uid: "800000000",
+      region: "Asia",
+    });
+    assert.equal(r.found, true);
+    assert.equal(r.verdict, "valid");
+    assert.equal(r.name, "PlayerName");
+    assert.equal(r.region, "Asia");
+  });
+
+  test("valid player — success+username shape (per-game variants)", () => {
+    const r = parseGameCheckResponse({ success: true, username: "Pro", uid: "1", zone: "1234" });
+    assert.equal(r.found, true);
+    assert.equal(r.name, "Pro");
+    assert.equal(r.region, "1234");
+  });
+
+  test("unknown player answers HTTP 200 with valid:'invalid' — NOT an error", () => {
+    const r = parseGameCheckResponse({ valid: "invalid", name: "na", region: "na" });
+    assert.equal(r.found, false);
+    assert.equal(r.verdict, "invalid");
+    assert.equal(r.note, null);
+  });
+
+  test("'na' placeholders never become a player name", () => {
+    const r = parseGameCheckResponse({ valid: "valid", name: "na", username: "Real" });
+    assert.equal(r.found, true);
+    assert.equal(r.name, "Real");
+  });
+
+  test("error envelope becomes verdict 'error' with a note", () => {
+    const r = parseGameCheckResponse({ success: false, message: "No plan", code: "NAME_CHECK_NOT_INCLUDED" });
+    assert.equal(r.found, false);
+    assert.equal(r.verdict, "error");
+    assert.match(r.note ?? "", /No plan/);
+  });
+
+  test("garbage input is an error, never a false 'invalid player'", () => {
+    const r = parseGameCheckResponse(null);
+    assert.equal(r.verdict, "error");
+    assert.equal(r.found, false);
+  });
+});
+
+describe("gameCheckHttpNote", () => {
+  test("maps the documented soft failures to warnings (never 'player not found')", () => {
+    assert.match(gameCheckHttpNote(403, { message: "refused", code: "IP_WHITELIST" }) ?? "", /whitelisted/i);
+    assert.match(gameCheckHttpNote(403, { message: "limit", code: "FREE_DAILY_LIMIT_REACHED" }) ?? "", /quota/i);
+    assert.match(gameCheckHttpNote(403, { code: "NAME_CHECK_NOT_INCLUDED" }) ?? "", /plan/i);
+    assert.match(gameCheckHttpNote(429, { message: "Too many requests", code: "RATE_LIMITED" }) ?? "", /rate limit/i);
+    assert.match(gameCheckHttpNote(401, { message: "API key required" }) ?? "", /API key required/);
+    assert.match(gameCheckHttpNote(500, null) ?? "", /HTTP 500/);
   });
 });

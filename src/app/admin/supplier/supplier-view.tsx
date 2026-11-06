@@ -19,6 +19,7 @@ import {
   Loader2,
   RefreshCw,
   Save,
+  ShieldCheck,
   Wallet,
   XCircle,
 } from "lucide-react";
@@ -75,6 +76,16 @@ type SyncResult = {
   skippedNoPrice: number;
 };
 
+type ValidateResult = {
+  gameCode: string;
+  playerId: string;
+  found: boolean;
+  name: string | null;
+  region: string | null;
+  verdict: string;
+  note: string | null;
+};
+
 export function SupplierView() {
   const [status, setStatus] = useState<AluuStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -93,6 +104,12 @@ export function SupplierView() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
+  const [checkGameCode, setCheckGameCode] = useState("");
+  const [checkPlayerId, setCheckPlayerId] = useState("");
+  const [checkServerCode, setCheckServerCode] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
+
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
@@ -103,6 +120,7 @@ export function SupplierView() {
       setStatus(statusRes);
       setSettings(settingsRes.settings);
       setGameCodeDraft(settingsRes.settings.ALUU_FF_GAMECODE ?? "");
+      setCheckGameCode(settingsRes.settings.ALUU_FF_GAMECODE ?? "");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load supplier status.");
     } finally {
@@ -186,6 +204,32 @@ export function SupplierView() {
       toast.error(e instanceof Error ? e.message : "Sync failed.");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function validatePlayerId() {
+    const code = checkGameCode.trim();
+    const pid = checkPlayerId.trim();
+    if (!/^[a-zA-Z0-9_-]{1,40}$/.test(code)) {
+      toast.error("Enter a valid game code first.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]{1,40}$/.test(pid)) {
+      toast.error("Enter a valid player ID (letters, numbers, dashes).");
+      return;
+    }
+    setValidating(true);
+    setValidateResult(null);
+    try {
+      const res = await apiFetch<ValidateResult>("/api/admin/aluu/validate", {
+        method: "POST",
+        json: { gameCode: code, playerId: pid, serverCode: checkServerCode.trim() || undefined },
+      });
+      setValidateResult(res);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Name check failed.");
+    } finally {
+      setValidating(false);
     }
   }
 
@@ -422,6 +466,79 @@ export function SupplierView() {
               description="The supplier returned no products for this game code."
             />
           ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Player ID validation (ALUU Name Check — /api/check/game-check) */}
+      <Card className="card-raja">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 font-display">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Player ID validation
+          </CardTitle>
+          <CardDescription>
+            Verify a Free Fire UID against the supplier before taking an order. Only games that support ALUU's name
+            check can be validated — orders for others are taken without one (per the supplier docs).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-4 sm:items-end">
+            <div className="space-y-1.5">
+              <Label htmlFor="aluu-check-game">Game code</Label>
+              <Input
+                id="aluu-check-game"
+                value={checkGameCode}
+                onChange={(e) => setCheckGameCode(e.target.value)}
+                placeholder="e.g. freefire_global"
+                maxLength={40}
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="aluu-check-uid">Player ID (UID)</Label>
+              <Input
+                id="aluu-check-uid"
+                value={checkPlayerId}
+                onChange={(e) => setCheckPlayerId(e.target.value)}
+                placeholder="e.g. 1234567890"
+                maxLength={40}
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="aluu-check-server">Server code (optional)</Label>
+              <Input
+                id="aluu-check-server"
+                value={checkServerCode}
+                onChange={(e) => setCheckServerCode(e.target.value)}
+                placeholder="only if the game lists one"
+                maxLength={40}
+                className="font-mono"
+              />
+            </div>
+            <Button onClick={() => void validatePlayerId()} disabled={validating || !status?.configured}>
+              {validating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ShieldCheck className="h-4 w-4" aria-hidden="true" />}
+              Check player
+            </Button>
+          </div>
+
+          {validateResult && (
+            <Alert variant={validateResult.found ? undefined : "destructive"}>
+              <AlertTitle>
+                {validateResult.found
+                  ? `Player found — ${validateResult.name ?? "name unavailable"}`
+                  : validateResult.verdict === "invalid"
+                    ? "No such player"
+                    : "Name check unavailable"}
+              </AlertTitle>
+              <AlertDescription>
+                {validateResult.found
+                  ? `UID ${validateResult.playerId} is valid at ALUU${validateResult.region ? ` (region: ${validateResult.region})` : ""}. Safe to accept top-ups for this player.`
+                  : validateResult.verdict === "invalid"
+                    ? `ALUU reports UID ${validateResult.playerId} as invalid for ${validateResult.gameCode}. Double-check the player ID before accepting payment.`
+                    : (validateResult.note ?? "The supplier could not answer this check right now.")}
+              </AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
     </div>
