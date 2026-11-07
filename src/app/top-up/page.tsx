@@ -31,7 +31,7 @@ export default async function TopUpPage() {
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
           <PageHeader
             title="Diamond Top-Up"
-            description="Pick a package, pay via EasyPaisa, and our team will deliver your Free Fire diamonds after verification."
+            description="Pick a package, pay via CryptoEze QR or EasyPaisa — diamonds are delivered to your Free Fire UID automatically once the payment is verified."
           />
           <OrderPanel
             packages={packages.map((p) => ({
@@ -41,6 +41,7 @@ export default async function TopUpPage() {
               price: p.price,
               badge: p.badge,
               description: p.description,
+              supplierManaged: p.supplierSource === "ALUU",
             }))}
             settings={{
               paymentMethod: settings.PAYMENT_METHOD_NAME || "EasyPaisa",

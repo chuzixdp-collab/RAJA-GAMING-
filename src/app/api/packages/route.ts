@@ -17,7 +17,15 @@ export const GET = withApi(async () => {
       description: true,
       badge: true,
       sortOrder: true,
+      // Presence-only supplier flag: lets the checkout offer the ALUU UID
+      // verification without exposing game codes or any supplier detail.
+      supplierSource: true,
     },
   });
-  return apiSuccess(packages);
+  return apiSuccess(
+    packages.map(({ supplierSource, ...pkg }) => ({
+      ...pkg,
+      supplierManaged: supplierSource === "ALUU",
+    }))
+  );
 });
