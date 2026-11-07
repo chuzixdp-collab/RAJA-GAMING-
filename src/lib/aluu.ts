@@ -88,7 +88,8 @@ export function getAluuConfigPresence(): { apiKeySet: boolean; secretSet: boolea
 export async function aluuRequest<T = unknown>(
   method: "GET" | "POST",
   pathWithQuery: string,
-  body?: unknown
+  body?: unknown,
+  opts?: { timeoutMs?: number }
 ): Promise<{ httpStatus: number; payload: T }> {
   const config = getAluuConfig();
   if (!config) {
@@ -106,6 +107,13 @@ export async function aluuRequest<T = unknown>(
   const stringToSign = `${timestamp}.${method}.${pathWithQuery}.${raw}`;
   const signature = createHmac("sha256", config.secret).update(stringToSign).digest("hex");
 
+  // Optional tighter deadline (the cron poller bounds every call so a slow
+  // ALUU can never wedge a run). Default stays the documented 25 s.
+  const timeoutMs =
+    typeof opts?.timeoutMs === "number" && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
+      ? Math.min(Math.trunc(opts.timeoutMs), 25_000)
+      : 25_000;
+
   let response: Response;
   try {
     response = await fetch(`${config.baseUrl}${pathWithQuery}`, {
@@ -119,7 +127,7 @@ export async function aluuRequest<T = unknown>(
       },
       body: raw || undefined,
       cache: "no-store",
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     throw new AluuError("ALUU_NETWORK", "Could not reach the ALUU API.");

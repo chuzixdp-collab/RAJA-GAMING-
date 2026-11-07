@@ -38,6 +38,8 @@ export type PackageDto = {
   price: number;
   badge: string | null;
   description: string | null;
+  /** True when the package is delivered through the ALUU supplier — enables UID verification. */
+  supplierManaged: boolean;
 };
 
 export type PaymentSettingsDto = {
@@ -121,6 +123,45 @@ export function OrderPanel({
   const [ffServer, setFfServer] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [userNote, setUserNote] = useState("");
+
+  // ALUU UID verification (advisory only — never blocks placing the order).
+  // checked:true carries the supplier's definitive verdict (player found or
+  // not); checked:false is a soft failure (quota/IP/provider) shown as a
+  // neutral hint so the buyer can still order.
+  type UidCheckResult =
+    | {
+        checked: true;
+        found: boolean;
+        verdict: "valid" | "invalid";
+        name: string | null;
+        region: string | null;
+      }
+    | { checked: false; message: string };
+  const [uidCheck, setUidCheck] = useState<UidCheckResult | null>(null);
+  const [checkingUid, setCheckingUid] = useState(false);
+
+  async function verifyUid() {
+    if (!selected || checkingUid) return;
+    if (!/^[0-9]{6,12}$/.test(ffUid)) {
+      setUidCheck({ checked: false, message: "Enter a valid 6–12 digit UID first." });
+      return;
+    }
+    setCheckingUid(true);
+    try {
+      const res = await apiFetch<UidCheckResult>("/api/aluu/check-uid", {
+        method: "POST",
+        json: { packageId: selected.id, playerId: ffUid },
+      });
+      setUidCheck(res);
+    } catch (e) {
+      setUidCheck({
+        checked: false,
+        message: e instanceof Error ? e.message : "Could not verify the UID right now.",
+      });
+    } finally {
+      setCheckingUid(false);
+    }
+  }
 
   // payment form
   const [trxId, setTrxId] = useState("");
@@ -220,6 +261,7 @@ export function OrderPanel({
     setFfServer("");
     setCouponCode("");
     setUserNote("");
+    setUidCheck(null);
     setTrxId("");
     setScreenshot(null);
   }
@@ -302,6 +344,7 @@ export function OrderPanel({
                       disabled={!settings.paymentsEnabled || !isLoggedIn}
                       onClick={() => {
                         setSelected(pkg);
+                        setUidCheck(null);
                         window.scrollTo({ top: 400, behavior: "smooth" });
                       }}
                     >
@@ -347,9 +390,43 @@ export function OrderPanel({
                 placeholder="e.g. 123456789"
                 required
                 value={ffUid}
-                onChange={(e) => setFfUid(e.target.value.replace(/[^0-9]/g, "").slice(0, 12))}
+                onChange={(e) => {
+                  setFfUid(e.target.value.replace(/[^0-9]/g, "").slice(0, 12));
+                  // A changed UID invalidates the previous verification.
+                  setUidCheck(null);
+                }}
               />
-              <p className="text-xs text-muted-foreground">6–12 digits — find it on your in-game profile.</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <p className="text-xs text-muted-foreground">6–12 digits — find it on your in-game profile.</p>
+                {selected.supplierManaged && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-xs"
+                    disabled={checkingUid || ffUid.length < 6}
+                    onClick={() => void verifyUid()}
+                  >
+                    <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                    {checkingUid ? "Checking…" : "Verify UID"}
+                  </Button>
+                )}
+              </div>
+              {uidCheck?.checked && uidCheck.found && (
+                <p className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  <BadgeCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  UID verified{uidCheck.name ? ` — ${uidCheck.name}` : ""}
+                  {uidCheck.region ? ` (${uidCheck.region})` : ""}
+                </p>
+              )}
+              {uidCheck?.checked && !uidCheck.found && (
+                <p className="text-xs font-medium text-destructive">
+                  This UID was not found at the supplier — please double-check it before paying.
+                </p>
+              )}
+              {uidCheck && !uidCheck.checked && (
+                <p className="text-xs text-muted-foreground">{uidCheck.message}</p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="ffServer">Server (optional)</Label>
