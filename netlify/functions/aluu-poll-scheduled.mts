@@ -1,23 +1,26 @@
-/**
- * Netlify Scheduled Function — ALUU delivery status poller trigger.
- *
- * Runs every 5 minutes (cron `*/5 * * * *`) and calls the site's own
- * POST /api/cron/aluu-poll endpoint with the shared CRON_SECRET bearer
- * token. All real logic lives inside the Next.js app
- * (src/lib/aluu-poll.ts + src/app/api/cron/aluu-poll/route.ts) so the whole
- * polling pipeline is typed, unit-testable and identical between local runs
- * and production.
- *
- * REQUIRED Netlify environment variable:
- *   CRON_SECRET — shared secret between this function and the API route
- *                 (fail closed: without it the route answers 503 and this
- *                 function reports skipped:NO_CRON_SECRET).
- * `URL` is provided by Netlify at runtime (the site's main domain).
- *
- * This function NEVER talks to ALUU directly, holds no keys besides
- * CRON_SECRET, and never places orders — it only refreshes supplier order
- * statuses through the gated, idempotent app pipeline.
- */
+// Netlify Scheduled Function — ALUU delivery status poller trigger.
+//
+// Runs every 5 minutes (cron "*/5 * * * *") and calls the site's own
+// POST /api/cron/aluu-poll endpoint with the shared CRON_SECRET bearer
+// token. All real logic lives inside the Next.js app
+// (src/lib/aluu-poll.ts + src/app/api/cron/aluu-poll/route.ts) so the whole
+// polling pipeline is typed, unit-testable and identical between local runs
+// and production.
+//
+// Note: this header uses // comments on purpose — a previous /** */ block
+// comment broke the build because the cron expression contains a literal
+// "*/" sequence, which terminated the block comment early (SyntaxError:
+// Unexpected "*").
+//
+// REQUIRED Netlify environment variable:
+//   CRON_SECRET — shared secret between this function and the API route
+//                 (fail closed: without it the route answers 503 and this
+//                 function reports skipped:NO_CRON_SECRET).
+// `URL` is provided by Netlify at runtime (the site's main domain).
+//
+// This function NEVER talks to ALUU directly, holds no keys besides
+// CRON_SECRET, and never places orders — it only refreshes supplier order
+// statuses through the gated, idempotent app pipeline.
 
 const POLL_PATH = "/api/cron/aluu-poll";
 
